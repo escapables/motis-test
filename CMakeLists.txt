@@ -143,9 +143,6 @@ target_link_libraries(motislib
 )
 
 
-# --- NATIVE API ---
-add_subdirectory(native)
-
 # --- EXE ---
 execute_process(
     COMMAND git describe --always --tags --dirty=-dirty
