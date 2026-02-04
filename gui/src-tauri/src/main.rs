@@ -1,13 +1,7 @@
 pub mod native;
 
 use native::{LocationResult as Location, RouteResult as Route};
-use std::sync::Mutex;
-use once_cell::sync::Lazy;
 use std::path::PathBuf;
-
-// Global state
-static DATA_PATH: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
-static EXE_PATH: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
 fn get_exe_dir() -> Result<PathBuf, String> {
     std::env::current_exe()
@@ -17,56 +11,41 @@ fn get_exe_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "Failed to get executable directory".to_string())
 }
 
-fn get_default_data_path() -> Result<PathBuf, String> {
-    let exe_dir = get_exe_dir()?;
-    Ok(exe_dir.join("data"))
-}
-
-fn get_default_exe_path() -> Result<PathBuf, String> {
-    let exe_dir = get_exe_dir()?;
-    // Look for motis-ipc next to the GUI executable
-    Ok(exe_dir.join("motis-ipc"))
+#[tauri::command]
+async fn init_backend(
+    exe_path: Option<String>,
+    data_path: Option<String>,
+    server_url: Option<String>
+) -> Result<String, String> {
+    // If server URL provided, use server mode
+    if let Some(url) = server_url {
+        native::init_server(&url);
+        return Ok(format!("Server mode: {}", url));
+    }
+    
+    // Otherwise try auto-detection
+    let exe = exe_path.as_deref().or_else(|| {
+        get_exe_dir().ok().map(|d| d.join("motis-ipc"))
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .map(|s| s.leak() as &str)
+    });
+    
+    let data = data_path.as_deref().or_else(|| {
+        get_exe_dir().ok().map(|d| d.join("data"))
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .map(|s| s.leak() as &str)
+    });
+    
+    native::auto_init(exe, data).await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_default_data_path_cmd() -> Result<String, String> {
-    let path = get_default_data_path()?;
-    path.to_str()
-        .map(String::from)
-        .ok_or_else(|| "Invalid path encoding".to_string())
-}
-
-#[tauri::command]
-async fn init_native(data_path: Option<String>, exe_path: Option<String>) -> Result<(), String> {
-    let data = match data_path {
-        Some(p) => PathBuf::from(p),
-        None => get_default_data_path()?
-    };
-    
-    let exe = match exe_path {
-        Some(p) => PathBuf::from(p),
-        None => get_default_exe_path()?
-    };
-    
-    if !data.exists() {
-        return Err(format!("Data path does not exist: {}", data.display()));
+async fn get_backend_mode() -> Result<String, String> {
+    match native::get_mode() {
+        native::BackendMode::Ipc => Ok("ipc".to_string()),
+        native::BackendMode::Server => Ok("server".to_string()),
     }
-    if !exe.exists() {
-        return Err(format!(
-            "Backend executable not found: {}. Make sure motis-native-example is built and copied next to the GUI executable.", 
-            exe.display()
-        ));
-    }
-    
-    let data_str = data.to_str().ok_or("Invalid data path")?;
-    let exe_str = exe.to_str().ok_or("Invalid exe path")?;
-    
-    native::init(data_str, exe_str).map_err(|e| e.to_string())?;
-    
-    *DATA_PATH.lock().map_err(|e| e.to_string())? = Some(data_str.to_string());
-    *EXE_PATH.lock().map_err(|e| e.to_string())? = Some(exe_str.to_string());
-    
-    Ok(())
 }
 
 #[tauri::command]
@@ -75,32 +54,25 @@ async fn plan_route_cmd(
     to_lat: f64, to_lon: f64,
 ) -> Result<Vec<Route>, String> {
     native::plan_route(from_lat, from_lon, to_lat, to_lon)
+        .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn geocode_cmd(query: String) -> Result<Vec<Location>, String> {
-    native::geocode(&query).map_err(|e| e.to_string())
+    native::geocode(&query).await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn reverse_geocode_cmd(lat: f64, lon: f64) -> Result<Option<Location>, String> {
-    native::reverse_geocode(lat, lon).map_err(|e| e.to_string())
+    native::reverse_geocode(lat, lon).await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn destroy_native() {
+async fn destroy_backend() {
     native::destroy();
-}
-
-#[tauri::command]
-async fn check_data_path_exists(path: String) -> Result<bool, String> {
-    Ok(PathBuf::from(path).exists())
-}
-
-#[tauri::command]
-async fn check_exe_path_exists(path: String) -> Result<bool, String> {
-    Ok(PathBuf::from(path).exists())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -108,14 +80,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            init_native,
-            get_default_data_path_cmd,
-            check_data_path_exists,
-            check_exe_path_exists,
+            init_backend,
+            get_backend_mode,
             plan_route_cmd,
             geocode_cmd,
             reverse_geocode_cmd,
-            destroy_native,
+            destroy_backend,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

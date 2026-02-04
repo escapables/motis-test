@@ -428,6 +428,10 @@ export type Place = {
      * Time that on-demand service ends
      */
     flexEndPickupDropOffWindow?: string;
+    /**
+     * available transport modes for stops
+     */
+    modes?: Array<Mode>;
 };
 
 /**
@@ -492,6 +496,10 @@ export type StopTime = {
      *
      */
     headsign: string;
+    /**
+     * first stop of this trip
+     */
+    tripFrom: Place;
     /**
      * final stop of this trip
      */
@@ -1118,6 +1126,10 @@ export type Leg = {
      */
     headsign?: string;
     /**
+     * first stop of this trip
+     */
+    tripFrom?: Place;
+    /**
      * final stop of this trip (can differ from headsign)
      */
     tripTo?: Place;
@@ -1179,6 +1191,11 @@ export type Leg = {
      *
      */
     loopedCalendarSince?: string;
+    /**
+     * Whether bikes can be carried on this leg.
+     *
+     */
+    bikesAllowed?: boolean;
 };
 
 export type RiderCategory = {
@@ -2424,6 +2441,10 @@ export type StoptimesData = {
          *
          */
         time?: string;
+        /**
+         * Optional. Default is `true`. If set to `false`, alerts are omitted in the metadata of place for all stopTimes.
+         */
+        withAlerts?: boolean;
         /**
          * Optional. Include stoptimes where passengers can not alight/board according to schedule.
          */

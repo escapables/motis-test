@@ -484,6 +484,13 @@ Can be missing if neither real-time updates nor the schedule timetable contains 
             description: 'Time that on-demand service ends',
             type: 'string',
             format: 'date-time'
+        },
+        modes: {
+            description: 'available transport modes for stops',
+            type: 'array',
+            items: {
+                '$ref': '#/components/schemas/Mode'
+            }
         }
     }
 } as const;
@@ -536,7 +543,7 @@ export const ReachableSchema = {
 export const StopTimeSchema = {
     description: 'departure or arrival event at a stop',
     type: 'object',
-    required: ['place', 'mode', 'realTime', 'headsign', 'tripTo', 'agencyId', 'agencyName', 'agencyUrl', 'tripId', 'routeId', 'directionId', 'routeShortName', 'routeLongName', 'tripShortName', 'displayName', 'pickupDropoffType', 'cancelled', 'tripCancelled', 'source'],
+    required: ['place', 'mode', 'realTime', 'headsign', 'tripFrom', 'tripTo', 'agencyId', 'agencyName', 'agencyUrl', 'tripId', 'routeId', 'directionId', 'routeShortName', 'routeLongName', 'tripShortName', 'displayName', 'pickupDropoffType', 'cancelled', 'tripCancelled', 'source'],
     properties: {
         place: {
             '$ref': '#/components/schemas/Place',
@@ -555,6 +562,10 @@ export const StopTimeSchema = {
 For non-transit legs, null
 `,
             type: 'string'
+        },
+        tripFrom: {
+            description: 'first stop of this trip',
+            '$ref': '#/components/schemas/Place'
         },
         tripTo: {
             description: 'final stop of this trip',
@@ -1361,6 +1372,10 @@ For non-transit legs, null
 `,
             type: 'string'
         },
+        tripFrom: {
+            description: 'first stop of this trip',
+            '$ref': '#/components/schemas/Place'
+        },
         tripTo: {
             description: 'final stop of this trip (can differ from headsign)',
             '$ref': '#/components/schemas/Place'
@@ -1462,6 +1477,11 @@ by looping active weekdays, e.g. from calendar.txt in GTFS.
 `,
             type: 'string',
             format: 'date-time'
+        },
+        bikesAllowed: {
+            description: `Whether bikes can be carried on this leg.
+`,
+            type: 'boolean'
         }
     }
 } as const;
