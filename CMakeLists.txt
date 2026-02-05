@@ -174,10 +174,10 @@ configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dir.h.in
         ${CMAKE_CURRENT_BINARY_DIR}/generated/test_dir.h
 )
-file(GLOB_RECURSE motis-test-files test/*.cc)
-add_executable(motis-test ${motis-test-files})
-target_link_libraries(motis-test motislib gtest web-server ianatzdb-res motis-generated)
-target_compile_options(motis-test PRIVATE ${motis-compile-options})
+file(GLOB_RECURSE motis-portable-files test/*.cc)
+add_executable(motis-portable ${motis-portable-files})
+target_link_libraries(motis-portable motislib gtest web-server ianatzdb-res motis-generated)
+target_compile_options(motis-portable PRIVATE ${motis-compile-options})
 
 
 # --- TILES ---
@@ -214,11 +214,11 @@ if (MOTIS_MIMALLOC)
                 COMMENT "Ensure mimalloc.dll is loaded first"
         )
         add_custom_command(
-                TARGET motis-test POST_BUILD
+                TARGET motis-portable POST_BUILD
                 COMMAND "${CMAKE_SOURCE_DIR}/deps/mimalloc/bin/minject.exe"
                 --force --inplace
                 $<$<CONFIG:Debug>:--postfix=debug>
-                $<TARGET_FILE:motis-test>
+                $<TARGET_FILE:motis-portable>
                 COMMENT "Ensure mimalloc.dll is loaded first"
         )
     endif()

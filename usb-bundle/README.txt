@@ -71,4 +71,4 @@ API EXAMPLES:
 
 MORE INFO:
 https://github.com/motis-project/motis
-https://github.com/escapables/motis-test
+https://github.com/escapables/motis-portable

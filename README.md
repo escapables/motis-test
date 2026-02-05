@@ -1,6 +1,6 @@
 <p align="center"><img src="logo.svg" width="196" height="196"></p>
 
-# MOTIS Portable Offline Fork (`escapables/motis-test`)
+# MOTIS Portable Offline Fork (`escapables/motis-portable`)
 
 > [!WARNING]
 > Experimental fork. APIs and behavior can change quickly.
