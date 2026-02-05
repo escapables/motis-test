@@ -244,3 +244,6 @@ endforeach()
 if (MOTIS_MIMALLOC)
     target_compile_options(mimalloc PUBLIC ${MOTIS_TARGET_FLAGS})
 endif()
+
+# --- NATIVE API ---
+add_subdirectory(native)

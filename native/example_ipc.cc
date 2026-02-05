@@ -45,16 +45,74 @@ json route_to_json(const route& r) {
     };
 }
 
+json area_to_json(const area& a) {
+    return json{
+        {"name", a.name},
+        {"admin_level", a.admin_level},
+        {"matched", a.matched},
+        {"unique", a.unique},
+        {"default", a.is_default}
+    };
+}
+
+json token_to_json(const token& t) {
+    return json::array({t.start, t.length});
+}
+
 json location_to_json(const location& loc) {
     json j = {
         {"name", loc.name},
         {"place_id", loc.place_id},
         {"lat", loc.pos.lat},
-        {"lon", loc.pos.lon}
+        {"lon", loc.pos.lon},
+        {"score", loc.score}
     };
+    
     if (loc.type) {
         j["type"] = *loc.type;
     }
+    if (loc.category) {
+        j["category"] = *loc.category;
+    }
+    
+    // Areas
+    json areas = json::array();
+    for (const auto& a : loc.areas) {
+        areas.push_back(area_to_json(a));
+    }
+    j["areas"] = areas;
+    
+    // Tokens
+    json tokens = json::array();
+    for (const auto& t : loc.tokens) {
+        tokens.push_back(token_to_json(t));
+    }
+    j["tokens"] = tokens;
+    
+    // Modes
+    if (loc.modes) {
+        j["modes"] = *loc.modes;
+    }
+    
+    // Importance
+    if (loc.importance) {
+        j["importance"] = *loc.importance;
+    }
+    
+    // Address fields
+    if (loc.street) {
+        j["street"] = *loc.street;
+    }
+    if (loc.house_number) {
+        j["house_number"] = *loc.house_number;
+    }
+    if (loc.country) {
+        j["country"] = *loc.country;
+    }
+    if (loc.zip) {
+        j["zip"] = *loc.zip;
+    }
+    
     return j;
 }
 
@@ -121,6 +179,63 @@ int main(int argc, char* argv[]) {
                 } else {
                     send_response(nullptr);
                 }
+            }
+            else if (cmd == "get_tile") {
+                int z = req["z"];
+                int x = req["x"];
+                int y = req["y"];
+                
+                auto tile = get_tile(*inst, z, x, y);
+                
+                if (tile.found) {
+                    json result = {
+                        {"data_base64", tile.data_base64},
+                        {"found", true}
+                    };
+                    send_response(result);
+                } else {
+                    json result = {{"found", false}};
+                    send_response(result);
+                }
+            }
+            else if (cmd == "get_glyph") {
+                std::string path = req.value("path", "");
+                if (path.empty()) {
+                    send_error("Missing path");
+                    continue;
+                }
+
+                auto glyph = get_glyph(*inst, path);
+                if (glyph.found) {
+                    json result = {
+                        {"data_base64", glyph.data_base64},
+                        {"found", true}
+                    };
+                    send_response(result);
+                } else {
+                    json result = {{"found", false}};
+                    send_response(result);
+                }
+            }
+            else if (cmd == "api_get") {
+                std::string path = req.value("path", "");
+                if (path.empty()) {
+                    send_error("Missing path");
+                    continue;
+                }
+
+                auto payload = api_get(*inst, path);
+                if (!payload) {
+                    send_error("Unsupported endpoint or endpoint failed: " + path);
+                    continue;
+                }
+
+                auto parsed = json::parse(*payload, nullptr, false);
+                if (parsed.is_discarded()) {
+                    send_error("Endpoint did not return valid JSON: " + path);
+                    continue;
+                }
+                send_response(parsed);
             }
             else {
                 send_error("Unknown command: " + cmd);
