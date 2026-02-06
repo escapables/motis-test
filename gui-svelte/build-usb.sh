@@ -7,26 +7,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../" && pwd)"
 USB_BUNDLE="$PROJECT_ROOT/usb-bundle-svelte"
 
-copy_runtime_lib() {
-    local resolver="$1"
-    local lib_name="$2"
-    local dst_dir="$3"
-    local lib_path
-
-    if ! command -v "$resolver" >/dev/null 2>&1; then
-        echo "WARNING: $resolver not found; cannot resolve $lib_name"
-        return
-    fi
-
-    lib_path="$("$resolver" -print-file-name="$lib_name" 2>/dev/null || true)"
-    if [ -n "$lib_path" ] && [ -f "$lib_path" ]; then
-        cp -L "$lib_path" "$dst_dir/"
-        echo "  bundled $lib_name ($(basename "$lib_path"))"
-    else
-        echo "WARNING: Could not resolve $lib_name with $resolver"
-    fi
-}
-
 echo "================================"
 echo "MOTIS Transit - Svelte UI Build"
 echo "================================"
@@ -64,13 +44,6 @@ else
     echo "WARNING: motis-ipc not found at build/native/motis-ipc"
     echo "        Please build it first: cmake --build build --target motis-ipc"
 fi
-
-# Copy GCC runtime libs for compatibility on older Linux systems.
-mkdir -p "$USB_BUNDLE/lib"
-echo "Bundling runtime libraries..."
-copy_runtime_lib "${CXX:-g++}" "libstdc++.so.6" "$USB_BUNDLE/lib"
-copy_runtime_lib "${CC:-gcc}" "libgcc_s.so.1" "$USB_BUNDLE/lib"
-copy_runtime_lib "${CC:-gcc}" "libatomic.so.1" "$USB_BUNDLE/lib"
 
 # Copy MOTIS import binary (for data import script)
 # Preferred build output is build/motis in this repo.

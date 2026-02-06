@@ -294,7 +294,7 @@ pub fn init_ipc(exe_path: &str, data_path: &str) -> Result<(), Box<dyn std::erro
     std::thread::sleep(std::time::Duration::from_millis(150));
     if let Some(status) = child.try_wait()? {
         return Err(format!(
-            "motis-ipc exited immediately (status: {}). Check bundled runtime libraries (libstdc++, libgcc_s, libatomic) and LD_LIBRARY_PATH.",
+            "motis-ipc exited immediately (status: {}). Check executable compatibility and startup logs.",
             status
         ).into());
     }

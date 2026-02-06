@@ -29,3 +29,23 @@ target_link_libraries(motis-native-example motis-native)
 add_executable(motis-ipc example_ipc.cc)
 target_include_directories(motis-ipc PRIVATE ${CMAKE_SOURCE_DIR}/deps/json/single_include)
 target_link_libraries(motis-ipc motis-native)
+if (NOT MSVC)
+  execute_process(
+    COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.a
+    OUTPUT_VARIABLE MOTIS_STATIC_LIBSTDCXX
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  execute_process(
+    COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libgcc.a
+    OUTPUT_VARIABLE MOTIS_STATIC_LIBGCC
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if (EXISTS "${MOTIS_STATIC_LIBSTDCXX}" AND EXISTS "${MOTIS_STATIC_LIBGCC}")
+    # Prefer static C++ runtime on USB builds when toolchain support exists.
+    target_link_options(motis-ipc PRIVATE -static-libstdc++ -static-libgcc)
+  else ()
+    message(WARNING "Static libstdc++/libgcc not found; building motis-ipc with dynamic runtime libs")
+  endif ()
+endif ()
