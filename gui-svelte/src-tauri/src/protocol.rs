@@ -8,7 +8,6 @@ use tauri::http::{Request, Response, StatusCode, header::CONTENT_TYPE};
 use std::borrow::Cow;
 use serde_json::json;
 use crate::native;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::io::Read;
 
 /// Handle motis:// scheme requests
@@ -66,7 +65,7 @@ pub fn handle_motis_request(
         "/api/v1/reverse-geocode" | "/api/v5/reverse-geocode" => handle_reverse_geocode(&params),
         
         // Route planning
-        "/api/v1/plan" | "/api/v5/plan" => handle_plan(&params),
+        "/api/v1/plan" | "/api/v5/plan" => handle_api_passthrough(path, query),
         "/api/v1/trip" | "/api/v5/trip" => handle_api_passthrough(path, query),
         
         // Stop times
@@ -172,172 +171,6 @@ fn handle_reverse_geocode(params: &std::collections::HashMap<String, String>)
         }
         Ok(None) => {
             Ok(("null".as_bytes().to_vec(), "application/json"))
-        }
-        Err(e) => Err(e.to_string())
-    }
-}
-
-/// Get current time as ISO 8601 string
-fn now_iso8601() -> String {
-    let now = SystemTime::now();
-    let since_epoch = now.duration_since(UNIX_EPOCH).unwrap_or_default();
-    let secs = since_epoch.as_secs() as i64;
-    
-    // Convert to ISO 8601 format: 2024-01-15T10:30:00+01:00
-    let dt = chrono::DateTime::from_timestamp(secs, 0)
-        .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH);
-    dt.to_rfc3339()
-}
-
-/// Add seconds to current time and return ISO 8601 string
-fn add_seconds_iso8601(seconds: i64) -> String {
-    let now = SystemTime::now();
-    let since_epoch = now.duration_since(UNIX_EPOCH).unwrap_or_default();
-    let secs = since_epoch.as_secs() as i64 + seconds;
-    
-    let dt = chrono::DateTime::from_timestamp(secs, 0)
-        .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH);
-    dt.to_rfc3339()
-}
-
-/// Generate display name for a leg
-fn leg_display_name(mode: &str, route_short_name: &Option<String>) -> Option<String> {
-    match mode {
-        "WALK" => Some("Walk".to_string()),
-        "BIKE" => Some("Bike".to_string()),
-        "CAR" => Some("Drive".to_string()),
-        _ => route_short_name.clone(),
-    }
-}
-
-fn handle_plan(params: &std::collections::HashMap<String, String>)
-    -> Result<(Vec<u8>, &'static str), String> {
-    
-    let from_place = params.get("fromPlace")
-        .ok_or("Missing 'fromPlace' parameter")?;
-    let to_place = params.get("toPlace")
-        .ok_or("Missing 'toPlace' parameter")?;
-    
-    let (from_lat, from_lon) = parse_place(from_place)?;
-    let (to_lat, to_lon) = parse_place(to_place)?;
-    
-    match native::plan_route_sync(from_lat, from_lon, to_lat, to_lon) {
-        Ok(routes) => {
-            let current_time = 0i64;
-            
-            // Convert legs to proper format with all required fields
-            let convert_legs = |legs: &Vec<native::RouteLeg>, start_time: i64| -> (Vec<serde_json::Value>, i64) {
-                let mut leg_time = start_time;
-                let converted: Vec<_> = legs.iter().map(|l| {
-                    let leg_start = add_seconds_iso8601(leg_time);
-                    let leg_end = add_seconds_iso8601(leg_time + l.duration_seconds as i64);
-                    leg_time += l.duration_seconds as i64;
-                    
-                    let display_name = leg_display_name(&l.mode, &l.route_short_name);
-                    let is_transit = l.mode != "WALK" && l.mode != "BIKE" && l.mode != "CAR";
-                    
-                    json!({
-                        "mode": l.mode,
-                        "from": {
-                            "name": l.from_name,
-                            "lat": l.from.lat,
-                            "lon": l.from.lon,
-                            "vertexType": "NORMAL",
-                            "tz": "Europe/Stockholm"
-                        },
-                        "to": {
-                            "name": l.to_name,
-                            "lat": l.to.lat,
-                            "lon": l.to.lon,
-                            "vertexType": "NORMAL",
-                            "tz": "Europe/Stockholm"
-                        },
-                        "duration": l.duration_seconds,
-                        "distance": l.distance_meters,
-                        "startTime": leg_start,
-                        "endTime": leg_end,
-                        "scheduledStartTime": leg_start,
-                        "scheduledEndTime": leg_end,
-                        "realTime": false,
-                        "scheduled": true,
-                        "routeShortName": l.route_short_name,
-                        "headsign": l.headsign,
-                        "displayName": display_name,
-                        "legGeometry": {
-                            "points": "",
-                            "length": 0
-                        },
-                        "interlineWithPreviousLeg": false,
-                        "rentedBike": false,
-                        "transitLeg": is_transit,
-                        "walkingBike": false
-                    })
-                }).collect();
-                (converted, leg_time)
-            };
-            
-            // Build itineraries with proper timestamps
-            let itineraries: Vec<_> = routes.iter().enumerate().map(|(idx, r)| {
-                let (legs, end_offset) = convert_legs(&r.legs, current_time);
-                let start_time = now_iso8601();
-                let end_time = add_seconds_iso8601(end_offset);
-                
-                json!({
-                    "id": format!("itinerary-{}", idx),
-                    "duration": r.duration_seconds,
-                    "startTime": start_time,
-                    "endTime": end_time,
-                    "transfers": r.transfers,
-                    "legs": legs,
-                    "fareTransfers": [],
-                    "tooSloped": false
-                })
-            }).collect();
-            
-            // Build direct connections (non-transit routes like walking, biking, driving)
-            let direct: Vec<_> = routes.iter().filter(|r| {
-                r.legs.iter().all(|l| l.mode == "WALK" || l.mode == "CAR" || l.mode == "BIKE")
-            }).enumerate().map(|(idx, r)| {
-                let (legs, end_offset) = convert_legs(&r.legs, current_time);
-                let start_time = now_iso8601();
-                let end_time = add_seconds_iso8601(end_offset);
-                
-                json!({
-                    "id": format!("direct-{}", idx),
-                    "duration": r.duration_seconds,
-                    "startTime": start_time,
-                    "endTime": end_time,
-                    "transfers": r.transfers,
-                    "legs": legs,
-                    "fareTransfers": [],
-                    "tooSloped": false
-                })
-            }).collect();
-            
-            // Full MOTIS plan response format
-            let response = json!({
-                "requestParameters": params,
-                "debugOutput": {},
-                "from": {
-                    "name": "Origin",
-                    "lat": from_lat,
-                    "lon": from_lon,
-                    "vertexType": "NORMAL",
-                    "tz": "Europe/Stockholm"
-                },
-                "to": {
-                    "name": "Destination", 
-                    "lat": to_lat,
-                    "lon": to_lon,
-                    "vertexType": "NORMAL",
-                    "tz": "Europe/Stockholm"
-                },
-                "direct": direct,
-                "itineraries": itineraries,
-                "previousPageCursor": "",
-                "nextPageCursor": ""
-            });
-            Ok((response.to_string().into_bytes(), "application/json"))
         }
         Err(e) => Err(e.to_string())
     }
@@ -495,17 +328,4 @@ fn handle_tiles(path: &str) -> Result<(Vec<u8>, &'static str), String> {
 fn handle_debug_transfers(_params: &std::collections::HashMap<String, String>)
     -> Result<(Vec<u8>, &'static str), String> {
     Ok(("[]".as_bytes().to_vec(), "application/json"))
-}
-
-// Helper function to parse "lat, lon" format
-fn parse_place(s: &str) -> Result<(f64, f64), String> {
-    let parts: Vec<&str> = s.split(',').collect();
-    if parts.len() != 2 {
-        return Err(format!("Invalid place format: {}", s));
-    }
-    let lat = parts[0].trim().parse::<f64>()
-        .map_err(|e| format!("Invalid lat: {}", e))?;
-    let lon = parts[1].trim().parse::<f64>()
-        .map_err(|e| format!("Invalid lon: {}", e))?;
-    Ok((lat, lon))
 }

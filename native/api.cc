@@ -499,6 +499,35 @@ std::optional<std::string> api_get(native_instance& inst,
     auto const url = boost::urls::url_view{path_and_query};
     auto const path = std::string{url.path()};
 
+    if (path == "/api/v1/plan" || path == "/api/v5/plan") {
+      if (!inst.data_.w_ || !inst.data_.l_ || !inst.data_.pl_ || !inst.data_.tt_ ||
+          !inst.data_.tags_) {
+        return std::nullopt;
+      }
+      auto ep = motis::ep::routing{
+          inst.config_,
+          inst.data_.w_.get(),
+          inst.data_.l_.get(),
+          inst.data_.pl_.get(),
+          inst.data_.elevations_.get(),
+          inst.data_.tt_.get(),
+          inst.data_.tbd_.get(),
+          inst.data_.tags_.get(),
+          inst.data_.location_rtree_.get(),
+          inst.data_.flex_areas_.get(),
+          inst.data_.matches_.get(),
+          inst.data_.way_matches_.get(),
+          inst.data_.rt_,
+          inst.data_.shapes_.get(),
+          inst.data_.gbfs_,
+          inst.data_.adr_ext_.get(),
+          inst.data_.tz_.get(),
+          inst.data_.odm_bounds_.get(),
+          inst.data_.ride_sharing_bounds_.get(),
+          inst.data_.metrics_.get()};
+      return boost::json::serialize(boost::json::value_from(ep(url)));
+    }
+
     if (path == "/api/v1/map/initial") {
       auto ep = motis::ep::initial{*inst.data_.tt_, inst.config_};
       return boost::json::serialize(boost::json::value_from(ep(url)));
