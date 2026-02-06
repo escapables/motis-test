@@ -33,7 +33,7 @@ void tag_invoke(boost::json::value_from_tag,
 }
 
 std::string label(nr::journey const& j) {
-  return std::format("[dep: {}, arr: {}, dur: {}, transfers: {}, odm_time: {}]",
+  return fmt::format("[dep: {}, arr: {}, dur: {}, transfers: {}, odm_time: {}]",
                      j.departure_time(), j.arrival_time(), j.travel_time(),
                      std::uint32_t{j.transfers_}, odm_time(j));
 }
