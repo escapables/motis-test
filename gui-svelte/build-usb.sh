@@ -33,6 +33,7 @@ cargo tauri build
 echo ""
 echo "[3/4] Copying to USB bundle..."
 mkdir -p "$USB_BUNDLE"
+rm -f "$USB_BUNDLE"/*.desktop
 
 # Copy GUI executable
 cp "$SCRIPT_DIR/src-tauri/target/release/motis-gui-svelte" "$USB_BUNDLE/"
