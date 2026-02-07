@@ -1,10 +1,11 @@
-use std::process::{Command, Stdio, Child};
-use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::io::{self, BufRead, BufReader, Write};
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use reqwest;
 use std::path::Path;
+use std::time::Duration;
 #[cfg(unix)]
 use std::io::ErrorKind;
 
@@ -170,22 +171,80 @@ pub enum BackendMode {
 // Global state
 static BACKEND_MODE: Lazy<Mutex<BackendMode>> = Lazy::new(|| Mutex::new(BackendMode::Ipc));
 static IPC_PROCESS: Lazy<Mutex<Option<IpcBackend>>> = Lazy::new(|| Mutex::new(None));
+static IPC_LAUNCH_CONFIG: Lazy<Mutex<Option<IpcLaunchConfig>>> = Lazy::new(|| Mutex::new(None));
 static SERVER_URL: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new("http://localhost:8080".to_string()));
 
+const IPC_RECOVERY_MAX_ATTEMPTS: usize = 2;
+const IPC_RECOVERY_DELAYS_MS: [u64; IPC_RECOVERY_MAX_ATTEMPTS] = [250, 1000];
+
+#[derive(Debug, Clone)]
+struct IpcLaunchConfig {
+    exe_path: String,
+    data_path: String,
+}
+
 pub struct IpcBackend {
-    _child: Child,
-    stdin: std::process::ChildStdin,
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
 }
 
 impl IpcBackend {
-    fn send_command(&mut self, cmd: &str) -> Result<String, Box<dyn std::error::Error>> {
+    fn send_command(&mut self, cmd: &str) -> io::Result<String> {
+        if let Some(status) = self.child.try_wait()? {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                format!("motis-ipc exited before command send: {}", status),
+            ));
+        }
+
         writeln!(self.stdin, "{}", cmd)?;
-        
-        let stdout = self._child.stdout.as_mut().ok_or("No stdout")?;
-        let mut reader = BufReader::new(stdout);
+        self.stdin.flush()?;
+
         let mut line = String::new();
-        reader.read_line(&mut line)?;
+        let bytes_read = self.stdout.read_line(&mut line)?;
+        if bytes_read == 0 {
+            if let Some(status) = self.child.try_wait()? {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    format!("motis-ipc exited before response: {}", status),
+                ));
+            }
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "motis-ipc returned empty response",
+            ));
+        }
         Ok(line)
+    }
+
+    fn terminate(&mut self, reason: &str) {
+        match self.child.try_wait() {
+            Ok(Some(status)) => {
+                eprintln!("[MOTIS-GUI] motis-ipc already exited ({reason}): {status}");
+            }
+            Ok(None) => {
+                eprintln!(
+                    "[MOTIS-GUI] Stopping motis-ipc PID {} ({reason})",
+                    self.child.id()
+                );
+                if let Err(err) = self.child.kill() {
+                    eprintln!("[MOTIS-GUI] Failed to kill motis-ipc: {}", err);
+                }
+                if let Err(err) = self.child.wait() {
+                    eprintln!("[MOTIS-GUI] Failed waiting for motis-ipc exit: {}", err);
+                }
+            }
+            Err(err) => {
+                eprintln!("[MOTIS-GUI] Failed to query motis-ipc state: {}", err);
+            }
+        }
+    }
+}
+
+impl Drop for IpcBackend {
+    fn drop(&mut self) {
+        self.terminate("drop");
     }
 }
 
@@ -244,27 +303,17 @@ fn ensure_executable(exe_path: &str) -> Result<String, Box<dyn std::error::Error
     }
 }
 
-pub fn init_ipc(exe_path: &str, data_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("[MOTIS-GUI] Starting motis-ipc...");
-    eprintln!("[MOTIS-GUI] Original exe path: {}", exe_path);
-    eprintln!("[MOTIS-GUI] Data path: {}", data_path);
-    
-    // Check data path exists
-    if !Path::new(data_path).exists() {
-        return Err(format!("Data directory not found: {}", data_path).into());
-    }
-    
-    // Ensure executable is actually executable (handles FAT32 USB)
+fn spawn_ipc_backend(exe_path: &str, data_path: &str) -> Result<IpcBackend, Box<dyn std::error::Error>> {
     let actual_exe_path = ensure_executable(exe_path)?;
     eprintln!("[MOTIS-GUI] Using executable: {}", actual_exe_path);
 
     let spawn = |binary: &str| {
-        Command::new(binary)
-            .arg(data_path)
+        let mut cmd = Command::new(binary);
+        cmd.arg(data_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())  // Show motis-ipc's stderr for debugging
-            .spawn()
+            .stderr(Stdio::inherit());  // Show motis-ipc's stderr for debugging
+        cmd.spawn()
     };
 
     let mut child = match spawn(&actual_exe_path) {
@@ -288,34 +337,153 @@ pub fn init_ipc(exe_path: &str, data_path: &str) -> Result<(), Box<dyn std::erro
         }
     };
 
-    eprintln!("[MOTIS-GUI] Process spawned, PID: {:?}", child.id());
+    eprintln!("[MOTIS-GUI] motis-ipc process spawned, PID: {}", child.id());
 
     // Catch immediate loader/startup failures early (e.g. missing GLIBCXX symbol).
-    std::thread::sleep(std::time::Duration::from_millis(150));
+    std::thread::sleep(Duration::from_millis(150));
     if let Some(status) = child.try_wait()? {
         return Err(format!(
             "motis-ipc exited immediately (status: {}). Check executable compatibility and startup logs.",
             status
         ).into());
     }
-    
+
     let stdin = child.stdin.take().ok_or("Failed to get stdin")?;
-    
-    // Store the backend first
-    let backend = IpcBackend { _child: child, stdin };
-    
+    let stdout = child.stdout.take().ok_or("Failed to get stdout")?;
+
+    Ok(IpcBackend {
+        child,
+        stdin,
+        stdout: BufReader::new(stdout),
+    })
+}
+
+fn replace_ipc_backend(backend: IpcBackend, reason: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut guard = IPC_PROCESS.lock()?;
+    if let Some(mut old) = guard.take() {
+        old.terminate(reason);
+    }
     *guard = Some(backend);
-    
+    Ok(())
+}
+
+fn recover_ipc_backend(reason: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    let launch = IPC_LAUNCH_CONFIG.lock()?.clone();
+    let Some(launch) = launch else {
+        eprintln!("[MOTIS-GUI] IPC recovery skipped (no launch config): {reason}");
+        return Ok(false);
+    };
+
+    eprintln!("[MOTIS-GUI] IPC recovery started: {reason}");
+    for attempt in 1..=IPC_RECOVERY_MAX_ATTEMPTS {
+        match spawn_ipc_backend(&launch.exe_path, &launch.data_path) {
+            Ok(backend) => {
+                replace_ipc_backend(backend, "recovery-replace")?;
+                eprintln!("[MOTIS-GUI] IPC recovery succeeded on attempt {}", attempt);
+                return Ok(true);
+            }
+            Err(err) => {
+                eprintln!(
+                    "[MOTIS-GUI] IPC recovery attempt {}/{} failed: {}",
+                    attempt, IPC_RECOVERY_MAX_ATTEMPTS, err
+                );
+                if attempt < IPC_RECOVERY_MAX_ATTEMPTS {
+                    std::thread::sleep(Duration::from_millis(
+                        IPC_RECOVERY_DELAYS_MS[attempt - 1],
+                    ));
+                }
+            }
+        }
+    }
+
+    eprintln!("[MOTIS-GUI] IPC recovery failed after {} attempts", IPC_RECOVERY_MAX_ATTEMPTS);
+    Ok(false)
+}
+
+fn send_ipc_command_with_recovery(cmd: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let total_attempts = IPC_RECOVERY_MAX_ATTEMPTS + 1;
+
+    for attempt in 1..=total_attempts {
+        let response = {
+            let mut guard = IPC_PROCESS.lock()?;
+            let backend = guard.as_mut().ok_or("IPC not initialized")?;
+            backend.send_command(cmd)
+        };
+
+        match response {
+            Ok(line) => return Ok(line),
+            Err(err) => {
+                eprintln!(
+                    "[MOTIS-GUI] IPC command attempt {}/{} failed: {}",
+                    attempt, total_attempts, err
+                );
+                if attempt == total_attempts {
+                    return Err(format!(
+                        "IPC command failed after {} attempts: {}",
+                        total_attempts, err
+                    )
+                    .into());
+                }
+                if !recover_ipc_backend(&err.to_string())? {
+                    return Err(format!("IPC recovery failed after command error: {}", err).into());
+                }
+            }
+        }
+    }
+
+    Err("IPC command failed with unknown recovery state".into())
+}
+
+fn send_ipc_json_command(cmd: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let response = send_ipc_command_with_recovery(cmd)?;
+    let result: serde_json::Value = serde_json::from_str(&response)
+        .map_err(|e| format!("Invalid IPC JSON response: {} (raw: {})", e, response.trim()))?;
+
+    if result["status"] == "ok" {
+        Ok(result["data"].clone())
+    } else {
+        let msg = result["message"].as_str().unwrap_or("Unknown error");
+        Err(msg.to_string().into())
+    }
+}
+
+pub fn init_ipc(exe_path: &str, data_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!("[MOTIS-GUI] Starting motis-ipc...");
+    eprintln!("[MOTIS-GUI] Original exe path: {}", exe_path);
+    eprintln!("[MOTIS-GUI] Data path: {}", data_path);
+
+    if !Path::new(data_path).exists() {
+        return Err(format!("Data directory not found: {}", data_path).into());
+    }
+
+    let backend = spawn_ipc_backend(exe_path, data_path)?;
+    replace_ipc_backend(backend, "reinit")?;
+
+    {
+        let mut cfg = IPC_LAUNCH_CONFIG.lock()?;
+        *cfg = Some(IpcLaunchConfig {
+            exe_path: exe_path.to_string(),
+            data_path: data_path.to_string(),
+        });
+    }
+
     let mut mode_guard = BACKEND_MODE.lock()?;
     *mode_guard = BackendMode::Ipc;
-    
+
     eprintln!("[MOTIS-GUI] IPC backend initialized (data loading in progress...)");
-    
     Ok(())
 }
 
 pub fn init_server(url: &str) {
+    if let Ok(mut guard) = IPC_PROCESS.lock() {
+        if let Some(mut backend) = guard.take() {
+            backend.terminate("switch-to-server");
+        }
+    }
+    if let Ok(mut cfg) = IPC_LAUNCH_CONFIG.lock() {
+        *cfg = None;
+    }
+
     let mut guard = SERVER_URL.lock().unwrap();
     *guard = url.to_string();
     
@@ -337,49 +505,14 @@ pub async fn geocode(query: &str) -> Result<Vec<Match>, Box<dyn std::error::Erro
             
             let cmd = format!(r#"{{"cmd":"geocode","query":"{}"}}"#, query.replace('"', "\\\""));
             eprintln!("[MOTIS-GUI] Sending command: {}", cmd);
-            
-            // Retry logic for IPC
-            let max_retries = 5;
-            let retry_delay = std::time::Duration::from_millis(1000);
-            
-            for attempt in 1..=max_retries {
-                let mut guard = IPC_PROCESS.lock()?;
-                let backend = guard.as_mut().ok_or("IPC not initialized")?;
-                
-                match backend.send_command(&cmd) {
-                    Ok(response) => {
-                        eprintln!("[MOTIS-GUI] Got response: {}", response.trim());
-                        
-                        let result: serde_json::Value = serde_json::from_str(&response)?;
-                        if result["status"] == "ok" {
-                            let locations: Vec<LocationResult> = serde_json::from_value(result["data"].clone())?;
-                            eprintln!("[MOTIS-GUI] Found {} locations", locations.len());
-                            // Convert to Match format
-                            let matches: Vec<Match> = locations.iter()
-                                .map(|loc| Match::from_location_result(loc))
-                                .collect();
-                            return Ok(matches);
-                        } else {
-                            let msg = result["message"].as_str().unwrap_or("Unknown error");
-                            eprintln!("[MOTIS-GUI] Backend error: {}", msg);
-                            return Err(msg.into());
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("[MOTIS-GUI] Attempt {}/{} failed: {}", attempt, max_retries, e);
-                        if attempt < max_retries {
-                            eprintln!("[MOTIS-GUI] Retrying in 1 second...");
-                            drop(guard); // Release lock before sleeping
-                            std::thread::sleep(retry_delay);
-                            continue;
-                        } else {
-                            return Err(e);
-                        }
-                    }
-                }
-            }
-            
-            Err("Max retries exceeded".into())
+            let data = send_ipc_json_command(&cmd)?;
+            let locations: Vec<LocationResult> = serde_json::from_value(data)?;
+            eprintln!("[MOTIS-GUI] Found {} locations", locations.len());
+            let matches: Vec<Match> = locations
+                .iter()
+                .map(Match::from_location_result)
+                .collect();
+            Ok(matches)
         }
         BackendMode::Server => {
             let url = SERVER_URL.lock()?.clone();
@@ -415,45 +548,10 @@ pub async fn plan_route(
                 from_lat, from_lon, to_lat, to_lon
             );
             eprintln!("[MOTIS-GUI] Sending command: {}", cmd);
-            
-            // Retry logic for IPC
-            let max_retries = 5;
-            let retry_delay = std::time::Duration::from_millis(1000);
-            
-            for attempt in 1..=max_retries {
-                let mut guard = IPC_PROCESS.lock()?;
-                let backend = guard.as_mut().ok_or("IPC not initialized")?;
-                
-                match backend.send_command(&cmd) {
-                    Ok(response) => {
-                        eprintln!("[MOTIS-GUI] Got response: {}", response.trim());
-                        
-                        let result: serde_json::Value = serde_json::from_str(&response)?;
-                        if result["status"] == "ok" {
-                            let routes: Vec<RouteResult> = serde_json::from_value(result["data"].clone())?;
-                            eprintln!("[MOTIS-GUI] Found {} routes", routes.len());
-                            return Ok(routes);
-                        } else {
-                            let msg = result["message"].as_str().unwrap_or("Unknown error");
-                            eprintln!("[MOTIS-GUI] Backend error: {}", msg);
-                            return Err(msg.into());
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("[MOTIS-GUI] Attempt {}/{} failed: {}", attempt, max_retries, e);
-                        if attempt < max_retries {
-                            eprintln!("[MOTIS-GUI] Retrying in 1 second...");
-                            drop(guard); // Release lock before sleeping
-                            std::thread::sleep(retry_delay);
-                            continue;
-                        } else {
-                            return Err(e);
-                        }
-                    }
-                }
-            }
-            
-            Err("Max retries exceeded".into())
+            let data = send_ipc_json_command(&cmd)?;
+            let routes: Vec<RouteResult> = serde_json::from_value(data)?;
+            eprintln!("[MOTIS-GUI] Found {} routes", routes.len());
+            Ok(routes)
         }
         BackendMode::Server => {
             let url = SERVER_URL.lock()?.clone();
@@ -495,15 +593,10 @@ pub async fn reverse_geocode(lat: f64, lon: f64) -> Result<Option<Match>, Box<dy
     
     match mode {
         BackendMode::Ipc => {
-            let mut guard = IPC_PROCESS.lock()?;
-            let backend = guard.as_mut().ok_or("IPC not initialized")?;
-            
             let cmd = format!(r#"{{"cmd":"reverse_geocode","lat":{},"lon":{}}}"#, lat, lon);
-            let response = backend.send_command(&cmd)?;
-            
-            let result: serde_json::Value = serde_json::from_str(&response)?;
-            if result["status"] == "ok" && !result["data"].is_null() {
-                let loc: LocationResult = serde_json::from_value(result["data"].clone())?;
+            let data = send_ipc_json_command(&cmd)?;
+            if !data.is_null() {
+                let loc: LocationResult = serde_json::from_value(data)?;
                 Ok(Some(Match::from_location_result(&loc)))
             } else {
                 Ok(None)
@@ -525,10 +618,21 @@ pub async fn reverse_geocode(lat: f64, lon: f64) -> Result<Option<Match>, Box<dy
 }
 
 pub fn destroy() {
-    let mut guard = IPC_PROCESS.lock().unwrap();
-    if let Some(_) = guard.take() {
-        // Process will be killed when dropped
+    eprintln!("[MOTIS-GUI] destroy() called");
+
+    if let Ok(mut guard) = IPC_PROCESS.lock() {
+        if let Some(mut backend) = guard.take() {
+            backend.terminate("destroy");
+        }
     }
+
+    if let Ok(mut cfg) = IPC_LAUNCH_CONFIG.lock() {
+        if cfg.is_some() {
+            eprintln!("[MOTIS-GUI] Clearing IPC launch config");
+        }
+        *cfg = None;
+    }
+
 }
 
 // Auto-detect mode based on what's available
@@ -585,24 +689,14 @@ pub async fn auto_init(exe_path: Option<&str>, data_path: Option<&str>) -> Resul
 /// Synchronous geocode for protocol handler
 pub fn geocode_sync(query: &str) -> Result<Vec<Match>, Box<dyn std::error::Error>> {
     let cmd = format!(r#"{{"cmd":"geocode","query":"{}"}}"#, query.replace('"', "\\\""));
-    
-    let mut guard = IPC_PROCESS.lock()?;
-    let backend = guard.as_mut().ok_or("IPC not initialized")?;
-    
-    let response = backend.send_command(&cmd)?;
-    let result: serde_json::Value = serde_json::from_str(&response)?;
-    
-    if result["status"] == "ok" {
-        let locations: Vec<LocationResult> = serde_json::from_value(result["data"].clone())?;
-        // Convert to Match format
-        let matches: Vec<Match> = locations.iter()
-            .map(|loc| Match::from_location_result(loc))
-            .collect();
-        Ok(matches)
-    } else {
-        let msg = result["message"].as_str().unwrap_or("Unknown error");
-        Err(msg.into())
-    }
+
+    let data = send_ipc_json_command(&cmd)?;
+    let locations: Vec<LocationResult> = serde_json::from_value(data)?;
+    let matches: Vec<Match> = locations
+        .iter()
+        .map(Match::from_location_result)
+        .collect();
+    Ok(matches)
 }
 
 /// Synchronous route planning for protocol handler
@@ -615,33 +709,18 @@ pub fn plan_route_sync(
         from_lat, from_lon, to_lat, to_lon
     );
     
-    let mut guard = IPC_PROCESS.lock()?;
-    let backend = guard.as_mut().ok_or("IPC not initialized")?;
-    
-    let response = backend.send_command(&cmd)?;
-    let result: serde_json::Value = serde_json::from_str(&response)?;
-    
-    if result["status"] == "ok" {
-        let routes: Vec<RouteResult> = serde_json::from_value(result["data"].clone())?;
-        Ok(routes)
-    } else {
-        let msg = result["message"].as_str().unwrap_or("Unknown error");
-        Err(msg.into())
-    }
+    let data = send_ipc_json_command(&cmd)?;
+    let routes: Vec<RouteResult> = serde_json::from_value(data)?;
+    Ok(routes)
 }
 
 /// Synchronous reverse geocode for protocol handler
 pub fn reverse_geocode_sync(lat: f64, lon: f64) -> Result<Option<Match>, Box<dyn std::error::Error>> {
     let cmd = format!(r#"{{"cmd":"reverse_geocode","lat":{},"lon":{}}}"#, lat, lon);
-    
-    let mut guard = IPC_PROCESS.lock()?;
-    let backend = guard.as_mut().ok_or("IPC not initialized")?;
-    
-    let response = backend.send_command(&cmd)?;
-    let result: serde_json::Value = serde_json::from_str(&response)?;
-    
-    if result["status"] == "ok" && !result["data"].is_null() {
-        let loc: LocationResult = serde_json::from_value(result["data"].clone())?;
+
+    let data = send_ipc_json_command(&cmd)?;
+    if !data.is_null() {
+        let loc: LocationResult = serde_json::from_value(data)?;
         Ok(Some(Match::from_location_result(&loc)))
     } else {
         Ok(None)
@@ -697,15 +776,10 @@ pub fn try_auto_init() -> bool {
 /// Synchronous get tile for protocol handler (returns base64 string)
 pub fn get_tile_sync(z: i32, x: i32, y: i32) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let cmd = format!(r#"{{"cmd":"get_tile","z":{},"x":{},"y":{}}}"#, z, x, y);
-    
-    let mut guard = IPC_PROCESS.lock()?;
-    let backend = guard.as_mut().ok_or("IPC not initialized")?;
-    
-    let response = backend.send_command(&cmd)?;
-    let result: serde_json::Value = serde_json::from_str(&response)?;
-    
-    if result["status"] == "ok" && result["data"]["found"].as_bool().unwrap_or(false) {
-        let base64_data = result["data"]["data_base64"].as_str()
+
+    let data = send_ipc_json_command(&cmd)?;
+    if data["found"].as_bool().unwrap_or(false) {
+        let base64_data = data["data_base64"].as_str()
             .ok_or("Invalid tile data")?;
         Ok(Some(base64_data.to_string()))
     } else {
@@ -720,14 +794,10 @@ pub fn get_glyph_sync(path: &str) -> Result<Option<String>, Box<dyn std::error::
         "path": path
     }).to_string();
 
-    let mut guard = IPC_PROCESS.lock()?;
-    let backend = guard.as_mut().ok_or("IPC not initialized")?;
+    let data = send_ipc_json_command(&cmd)?;
 
-    let response = backend.send_command(&cmd)?;
-    let result: serde_json::Value = serde_json::from_str(&response)?;
-
-    if result["status"] == "ok" && result["data"]["found"].as_bool().unwrap_or(false) {
-        let base64_data = result["data"]["data_base64"]
+    if data["found"].as_bool().unwrap_or(false) {
+        let base64_data = data["data_base64"]
             .as_str()
             .ok_or("Invalid glyph data")?;
         Ok(Some(base64_data.to_string()))
@@ -743,16 +813,26 @@ pub fn api_get_sync(path_and_query: &str) -> Result<serde_json::Value, Box<dyn s
         "path": path_and_query
     }).to_string();
 
-    let mut guard = IPC_PROCESS.lock()?;
-    let backend = guard.as_mut().ok_or("IPC not initialized")?;
+    send_ipc_json_command(&cmd)
+}
 
-    let response = backend.send_command(&cmd)?;
-    let result: serde_json::Value = serde_json::from_str(&response)?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    if result["status"] == "ok" {
-        Ok(result["data"].clone())
-    } else {
-        let msg = result["message"].as_str().unwrap_or("Unknown error");
-        Err(msg.into())
+    #[test]
+    fn destroy_is_idempotent_without_backend() {
+        destroy();
+        destroy();
+    }
+
+    #[test]
+    fn recovery_without_launch_config_returns_false() {
+        {
+            let mut cfg = IPC_LAUNCH_CONFIG.lock().expect("lock launch config");
+            *cfg = None;
+        }
+        let recovered = recover_ipc_backend("unit-test").expect("recover call");
+        assert!(!recovered);
     }
 }

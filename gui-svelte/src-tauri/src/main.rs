@@ -9,6 +9,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // Global debug flag
 static DEBUG_MODE: AtomicBool = AtomicBool::new(false);
 
+struct IpcShutdownGuard;
+
+impl Drop for IpcShutdownGuard {
+    fn drop(&mut self) {
+        native::destroy();
+    }
+}
+
 fn get_exe_dir() -> Result<PathBuf, String> {
     std::env::current_exe()
         .map_err(|e| format!("Failed to get executable path: {}", e))?
@@ -127,6 +135,7 @@ pub fn run() {
 }
 
 fn main() {
+    let _ipc_shutdown_guard = IpcShutdownGuard;
     let args: Vec<String> = std::env::args().collect();
     let debug_mode = args.contains(&"--debug".to_string());
     DEBUG_MODE.store(debug_mode, Ordering::Relaxed);
