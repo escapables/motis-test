@@ -173,6 +173,7 @@ static BACKEND_MODE: Lazy<Mutex<BackendMode>> = Lazy::new(|| Mutex::new(BackendM
 static IPC_PROCESS: Lazy<Mutex<Option<IpcBackend>>> = Lazy::new(|| Mutex::new(None));
 static IPC_LAUNCH_CONFIG: Lazy<Mutex<Option<IpcLaunchConfig>>> = Lazy::new(|| Mutex::new(None));
 static SERVER_URL: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new("http://localhost:8080".to_string()));
+static STARTUP_DIAGNOSTICS: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
 const IPC_RECOVERY_MAX_ATTEMPTS: usize = 2;
 const IPC_RECOVERY_DELAYS_MS: [u64; IPC_RECOVERY_MAX_ATTEMPTS] = [250, 1000];
@@ -181,6 +182,27 @@ const IPC_RECOVERY_DELAYS_MS: [u64; IPC_RECOVERY_MAX_ATTEMPTS] = [250, 1000];
 struct IpcLaunchConfig {
     exe_path: String,
     data_path: String,
+}
+
+fn remember_startup_diagnostics(message: impl Into<String>) {
+    let message = message.into();
+    eprintln!("[MOTIS-GUI] startup-diagnostics: {}", message);
+    if let Ok(mut guard) = STARTUP_DIAGNOSTICS.lock() {
+        *guard = Some(message);
+    }
+}
+
+fn clear_startup_diagnostics() {
+    if let Ok(mut guard) = STARTUP_DIAGNOSTICS.lock() {
+        *guard = None;
+    }
+}
+
+pub fn get_startup_diagnostics() -> Option<String> {
+    STARTUP_DIAGNOSTICS
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
 }
 
 pub struct IpcBackend {
@@ -301,6 +323,47 @@ fn ensure_executable(exe_path: &str) -> Result<String, Box<dyn std::error::Error
     {
         Ok(exe_path.to_string())
     }
+}
+
+fn validate_ipc_executable_path(exe_path: &str) -> Result<(), String> {
+    let path = Path::new(exe_path);
+    if !path.exists() {
+        return Err(format!(
+            "motis-ipc executable not found at '{}'. Next action: verify the file exists and launch via RUN.sh.",
+            exe_path
+        ));
+    }
+    if !path.is_file() {
+        return Err(format!(
+            "motis-ipc path is not a file: '{}'. Next action: check bundle layout and MOTIS_IPC_PATH.",
+            exe_path
+        ));
+    }
+    Ok(())
+}
+
+fn validate_data_directory(data_path: &str) -> Result<(), String> {
+    let path = Path::new(data_path);
+    if !path.exists() {
+        return Err(format!(
+            "Data directory not found at '{}'. Next action: set MOTIS_DATA_PATH correctly or place 'data/' next to the app.",
+            data_path
+        ));
+    }
+    if !path.is_dir() {
+        return Err(format!(
+            "Data path is not a directory: '{}'. Next action: point MOTIS_DATA_PATH to a MOTIS data directory.",
+            data_path
+        ));
+    }
+    let config = path.join("config.yml");
+    if !config.exists() {
+        return Err(format!(
+            "Data directory '{}' is missing 'config.yml'. Next action: run import (motis-import.sh) or copy a complete data bundle.",
+            data_path
+        ));
+    }
+    Ok(())
 }
 
 fn spawn_ipc_backend(exe_path: &str, data_path: &str) -> Result<IpcBackend, Box<dyn std::error::Error>> {
@@ -452,11 +515,27 @@ pub fn init_ipc(exe_path: &str, data_path: &str) -> Result<(), Box<dyn std::erro
     eprintln!("[MOTIS-GUI] Original exe path: {}", exe_path);
     eprintln!("[MOTIS-GUI] Data path: {}", data_path);
 
-    if !Path::new(data_path).exists() {
-        return Err(format!("Data directory not found: {}", data_path).into());
+    if let Err(message) = validate_ipc_executable_path(exe_path) {
+        remember_startup_diagnostics(message.clone());
+        return Err(message.into());
     }
 
-    let backend = spawn_ipc_backend(exe_path, data_path)?;
+    if let Err(message) = validate_data_directory(data_path) {
+        remember_startup_diagnostics(message.clone());
+        return Err(message.into());
+    }
+
+    let backend = match spawn_ipc_backend(exe_path, data_path) {
+        Ok(backend) => backend,
+        Err(e) => {
+            let message = format!(
+                "Failed to start motis-ipc (exe='{}', data='{}'): {}. Next action: run RUN.sh --launcher-self-test and check launcher.log/error.txt.",
+                exe_path, data_path, e
+            );
+            remember_startup_diagnostics(message.clone());
+            return Err(message.into());
+        }
+    };
     replace_ipc_backend(backend, "reinit")?;
 
     {
@@ -470,6 +549,7 @@ pub fn init_ipc(exe_path: &str, data_path: &str) -> Result<(), Box<dyn std::erro
     let mut mode_guard = BACKEND_MODE.lock()?;
     *mode_guard = BackendMode::Ipc;
 
+    clear_startup_diagnostics();
     eprintln!("[MOTIS-GUI] IPC backend initialized (data loading in progress...)");
     Ok(())
 }
@@ -489,6 +569,7 @@ pub fn init_server(url: &str) {
     
     let mut mode_guard = BACKEND_MODE.lock().unwrap();
     *mode_guard = BackendMode::Server;
+    clear_startup_diagnostics();
 }
 
 pub fn get_mode() -> BackendMode {
@@ -643,8 +724,22 @@ pub async fn auto_init(exe_path: Option<&str>, data_path: Option<&str>) -> Resul
     eprintln!("[MOTIS-GUI] data_path: {:?}", data_path);
     
     // USB PORTABLE MODE: Only use IPC, never fall back to server
-    let exe = exe_path.ok_or("No executable path provided")?;
-    let data = data_path.ok_or("No data path provided")?;
+    let exe = match exe_path {
+        Some(path) => path,
+        None => {
+            let message = "No executable path provided for initialization. Next action: set MOTIS_IPC_PATH or launch via RUN.sh.".to_string();
+            remember_startup_diagnostics(message.clone());
+            return Err(message.into());
+        }
+    };
+    let data = match data_path {
+        Some(path) => path,
+        None => {
+            let message = "No data path provided for initialization. Next action: set MOTIS_DATA_PATH or launch via RUN.sh.".to_string();
+            remember_startup_diagnostics(message.clone());
+            return Err(message.into());
+        }
+    };
     
     eprintln!("[MOTIS-GUI] Checking if files exist...");
     let exe_exists = Path::new(exe).exists();
@@ -652,17 +747,21 @@ pub async fn auto_init(exe_path: Option<&str>, data_path: Option<&str>) -> Resul
     eprintln!("[MOTIS-GUI] exe exists: {}, data exists: {}", exe_exists, data_exists);
     
     if !exe_exists {
-        return Err(format!(
-            "motis-ipc executable not found: {}\n\nPlease ensure:\n1. motis-ipc is in the same folder as motis-gui\n2. You're running from the correct directory", 
+        let message = format!(
+            "motis-ipc executable not found at '{}'. Next action: verify the file exists and launch via RUN.sh.",
             exe
-        ).into());
+        );
+        remember_startup_diagnostics(message.clone());
+        return Err(message.into());
     }
     
     if !data_exists {
-        return Err(format!(
-            "Data directory not found: {}\n\nPlease ensure:\n1. The 'data' folder exists next to motis-gui\n2. You've imported GTFS/OSM data using ./motis-transit import", 
+        let message = format!(
+            "Data directory not found at '{}'. Next action: provide a valid MOTIS data directory (with config.yml).",
             data
-        ).into());
+        );
+        remember_startup_diagnostics(message.clone());
+        return Err(message.into());
     }
     
     eprintln!("[MOTIS-GUI] Attempting IPC initialization...");
@@ -672,11 +771,10 @@ pub async fn auto_init(exe_path: Option<&str>, data_path: Option<&str>) -> Resul
             Ok("IPC mode initialized".to_string())
         }
         Err(e) => {
-            eprintln!("[MOTIS-GUI] IPC init failed: {}", e);
-            Err(format!(
-                "Failed to start IPC backend: {}\n\nTroubleshooting:\n1. Check that motis-ipc has executable permissions:\n   chmod +x {}\n2. If on NTFS/USB, ensure it's mounted with exec permissions\n3. Try running: {} --version\n4. Check that data directory contains valid MOTIS data", 
-                e, exe, exe
-            ).into())
+            let message = format!("Initialization failed: {}", e);
+            eprintln!("[MOTIS-GUI] IPC init failed: {}", message);
+            remember_startup_diagnostics(message.clone());
+            Err(message.into())
         }
     }
 }
@@ -762,13 +860,24 @@ pub fn try_auto_init() -> bool {
     if let (Some(ipc), Some(data)) = (&ipc_path, &data_path) {
         eprintln!("[MOTIS-GUI] Auto-init with IPC: {}, Data: {}", ipc, data);
         if let Err(e) = init_ipc(ipc, data) {
-            eprintln!("[MOTIS-GUI] Auto-init failed: {}", e);
+            let message = format!(
+                "Auto-initialization failed with MOTIS_IPC_PATH='{}' and MOTIS_DATA_PATH='{}': {}",
+                ipc, data, e
+            );
+            remember_startup_diagnostics(message.clone());
+            eprintln!("[MOTIS-GUI] Auto-init failed: {}", message);
             return false;
         }
         eprintln!("[MOTIS-GUI] Auto-init succeeded!");
+        clear_startup_diagnostics();
         return true;
     }
     
+    let message = format!(
+        "Auto-initialization could not determine required paths. MOTIS_IPC_PATH={:?}, MOTIS_DATA_PATH={:?}. Next action: launch via RUN.sh or set both environment variables.",
+        ipc_path, data_path
+    );
+    remember_startup_diagnostics(message);
     eprintln!("[MOTIS-GUI] Auto-init: missing paths. IPC: {:?}, Data: {:?}", ipc_path, data_path);
     false
 }

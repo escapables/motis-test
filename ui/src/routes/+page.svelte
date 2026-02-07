@@ -125,25 +125,62 @@
 			: undefined
 	);
 
+	const formatInitError = (error: unknown): string => {
+		if (error == null) {
+			return 'Startup failed: unknown initialization error.';
+		}
+		if (typeof error === 'string') {
+			return error;
+		}
+		if (error instanceof Error) {
+			return error.message;
+		}
+		if (typeof error === 'object') {
+			const value = error as Record<string, unknown>;
+			const stage = typeof value.stage === 'string' ? `[${value.stage}] ` : '';
+			const message =
+				(typeof value.error === 'string' && value.error) ||
+				(typeof value.message === 'string' && value.message) ||
+				'';
+			if (message) {
+				return `${stage}${message}`;
+			}
+			try {
+				return `${stage}${JSON.stringify(value)}`;
+			} catch {
+				return `${stage}${String(error)}`;
+			}
+		}
+		return String(error);
+	};
+
 	const loadInitialState = async () => {
 		initLoading = true;
 		initError = undefined;
 		try {
 			const d = await initial();
+			if (d.error) {
+				const status = d.response.status;
+				const formatted = formatInitError(d.error);
+				initError = status ? `${formatted} (HTTP ${status})` : formatted;
+				return;
+			}
 			if (d.response.headers.has('Link')) {
 				const parsedLink = d.response.headers.get('Link')!.replace(/^<(.*)>; rel="license"$/, '$1');
 				dataAttributionLink = sanitizeExternalHttpUrl(parsedLink);
 			}
 			const r = d.data;
-			if (r) {
-				center = [r.lon, r.lat];
-				zoom = r.zoom;
-				serverConfig = r.serverConfig;
+			if (!r) {
+				initError = 'Initialization endpoint returned no data.';
+				return;
 			}
+			center = [r.lon, r.lat];
+			zoom = r.zoom;
+			serverConfig = r.serverConfig;
 			await tick();
 			applyPageStateFromURL();
 		} catch (error) {
-			initError = String(error);
+			initError = formatInitError(error);
 		} finally {
 			dataLoaded = true;
 			initLoading = false;

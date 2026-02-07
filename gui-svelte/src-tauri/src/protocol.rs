@@ -10,6 +10,49 @@ use serde_json::json;
 use crate::native;
 use std::io::Read;
 
+fn error_response(
+    status: StatusCode,
+    stage: &str,
+    path: &str,
+    message: &str,
+) -> Response<Cow<'static, [u8]>> {
+    let payload = json!({
+        "error": message,
+        "stage": stage,
+        "path": path
+    });
+
+    Response::builder()
+        .status(status)
+        .header(CONTENT_TYPE, "application/json")
+        .header("Access-Control-Allow-Origin", "*")
+        .body(Cow::Owned(payload.to_string().into_bytes()))
+        .unwrap()
+}
+
+fn classify_error(error: &str) -> (StatusCode, &'static str) {
+    let lower = error.to_ascii_lowercase();
+    if lower.starts_with("unknown endpoint:") {
+        return (StatusCode::NOT_FOUND, "endpoint");
+    }
+    if lower.contains("initialization")
+        || lower.contains("not initialized")
+        || lower.contains("data directory")
+        || lower.contains("motis_data_path")
+        || lower.contains("config.yml")
+    {
+        return (StatusCode::SERVICE_UNAVAILABLE, "initialization");
+    }
+    if lower.contains("ipc")
+        || lower.contains("motis-ipc")
+        || lower.contains("broken pipe")
+        || lower.contains("unexpected eof")
+    {
+        return (StatusCode::BAD_GATEWAY, "ipc");
+    }
+    (StatusCode::INTERNAL_SERVER_ERROR, "endpoint")
+}
+
 /// Handle motis:// scheme requests
 pub fn handle_motis_request(
     request: Request<Vec<u8>>,
@@ -19,26 +62,22 @@ pub fn handle_motis_request(
     
     eprintln!("[MOTIS-PROTOCOL] Request: {}?{}", path, query);
     
-    // Check if IPC is initialized (except for initial config which can work without)
+    // Check if IPC is initialized.
     let mut is_initialized = native::is_ipc_initialized();
     
     // Try auto-initialization if not initialized (for USB/FAT32 launcher compatibility)
-    if !is_initialized && !path.contains("/map/initial") {
+    if !is_initialized {
         is_initialized = native::try_auto_init();
     }
     
     eprintln!("[MOTIS-PROTOCOL] IPC initialized: {}, path: {}", is_initialized, path);
     
-    if !is_initialized && !path.contains("/map/initial") {
-        let error = json!({
-            "error": "MOTIS IPC not initialized",
-            "message": "Please call init_native() first"
+    if !is_initialized {
+        let message = native::get_startup_diagnostics().unwrap_or_else(|| {
+            "MOTIS IPC not initialized. Next action: launch via RUN.sh or set MOTIS_IPC_PATH and MOTIS_DATA_PATH."
+                .to_string()
         });
-        return Response::builder()
-            .status(StatusCode::SERVICE_UNAVAILABLE)
-            .header(CONTENT_TYPE, "application/json")
-            .body(Cow::Owned(error.to_string().into_bytes()))
-            .unwrap();
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "initialization", path, &message);
     }
     
     // Parse query parameters
@@ -118,13 +157,8 @@ pub fn handle_motis_request(
         }
         Err(e) => {
             eprintln!("[MOTIS-PROTOCOL] Error: {}", e);
-            let error_json = json!({"error": e}).to_string();
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .header(CONTENT_TYPE, "application/json")
-                .header("Access-Control-Allow-Origin", "*")
-                .body(Cow::Owned(error_json.into_bytes()))
-                .unwrap()
+            let (status, stage) = classify_error(&e);
+            error_response(status, stage, path, &e)
         }
     }
 }
