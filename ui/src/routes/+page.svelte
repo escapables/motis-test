@@ -75,6 +75,7 @@
 	import { LEVEL_MIN_ZOOM } from '$lib/constants';
 	import StopGeoJSON from '$lib/map/stops/StopsGeoJSON.svelte';
 	import RailViz from '$lib/RailViz.svelte';
+	import { parseDebugPlanResponse } from '$lib/debugPlanImport';
 
 	const urlParams = browser ? new URLSearchParams(window.location.search) : undefined;
 
@@ -530,18 +531,40 @@
 		}
 	});
 
-	if (browser) {
-		addEventListener('paste', (event: ClipboardEvent) => {
-			const paste = event.clipboardData!.getData('text');
-			const json = JSON.parse(paste);
-			console.log('paste: ', json);
-			const response = new Promise<PlanResponse>((resolve, _) => {
-				resolve(json as PlanResponse);
-			});
-			baseResponse = response;
-			routingResponses = [response];
-		});
-	}
+	const isEditablePasteTarget = (target: EventTarget | null): boolean => {
+		return Boolean(
+			target instanceof HTMLElement &&
+				target.closest('input, textarea, [contenteditable], [role="textbox"]')
+		);
+	};
+
+	const importDebugPlanFromClipboard = (clipboardText: string): void => {
+		const parsed = parseDebugPlanResponse(clipboardText);
+		if (!parsed) {
+			return;
+		}
+		const response = Promise.resolve(parsed);
+		baseResponse = response;
+		routingResponses = [response];
+	};
+
+	onMount(() => {
+		if (!browser || !hasDebug) {
+			return;
+		}
+		const handlePaste = (event: ClipboardEvent) => {
+			if (event.defaultPrevented || isEditablePasteTarget(event.target)) {
+				return;
+			}
+			const clipboardText =
+				event.clipboardData?.getData('text/plain') ?? event.clipboardData?.getData('text') ?? '';
+			importDebugPlanFromClipboard(clipboardText);
+		};
+		window.addEventListener('paste', handlePaste);
+		return () => {
+			window.removeEventListener('paste', handlePaste);
+		};
+	});
 
 	const flyToItineraries = (itineraries: Itinerary[], map: maplibregl.Map) => {
 		const start = maplibregl.LngLat.convert(itineraries[0].legs[0].from);
