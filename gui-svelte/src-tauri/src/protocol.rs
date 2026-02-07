@@ -53,6 +53,60 @@ fn classify_error(error: &str) -> (StatusCode, &'static str) {
     (StatusCode::INTERNAL_SERVER_ERROR, "endpoint")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RouteKind {
+    Geocode,
+    ReverseGeocode,
+    Passthrough,
+    Glyph,
+    Tiles,
+    DebugTransfers,
+    Unknown,
+}
+
+fn classify_path(path: &str) -> RouteKind {
+    match path {
+        // Geocoding
+        "/api/v1/geocode" | "/api/v5/geocode" => RouteKind::Geocode,
+        "/api/v1/reverse-geocode" | "/api/v5/reverse-geocode" => RouteKind::ReverseGeocode,
+
+        // Route planning + core transit API
+        "/api/v1/plan"
+        | "/api/v5/plan"
+        | "/api/v1/trip"
+        | "/api/v5/trip"
+        | "/api/v1/stoptimes"
+        | "/api/v4/stoptimes"
+        | "/api/v5/stoptimes"
+        | "/api/v1/map/trips"
+        | "/api/v4/map/trips"
+        | "/api/v5/map/trips"
+        | "/api/v1/map/initial"
+        | "/api/v1/map/stops"
+        | "/api/v1/map/levels"
+        | "/api/v1/one-to-many"
+        | "/api/v1/one-to-all"
+        | "/api/experimental/one-to-all"
+        | "/api/v1/rentals"
+        | "/api/v1/map/rentals" => RouteKind::Passthrough,
+
+        // Glyph requests used by MapLibre text rendering
+        _ if path.starts_with("/tiles/glyphs/") => RouteKind::Glyph,
+
+        // Tiles (vector tiles for map)
+        _ if path.starts_with("/api/v1/tiles/")
+            || path.starts_with("/api/v5/tiles/")
+            || (path.starts_with("/tiles/") && path.ends_with(".mvt")) =>
+        {
+            RouteKind::Tiles
+        }
+
+        // Debug
+        "/api/debug/transfers" => RouteKind::DebugTransfers,
+        _ => RouteKind::Unknown,
+    }
+}
+
 /// Handle motis:// scheme requests
 pub fn handle_motis_request(
     request: Request<Vec<u8>>,
@@ -98,52 +152,14 @@ pub fn handle_motis_request(
     }
     
     // Route to appropriate handler
-    let result = match path {
-        // Geocoding
-        "/api/v1/geocode" | "/api/v5/geocode" => handle_geocode(&params),
-        "/api/v1/reverse-geocode" | "/api/v5/reverse-geocode" => handle_reverse_geocode(&params),
-        
-        // Route planning
-        "/api/v1/plan" | "/api/v5/plan" => handle_api_passthrough(path, query),
-        "/api/v1/trip" | "/api/v5/trip" => handle_api_passthrough(path, query),
-        
-        // Stop times
-        "/api/v1/stoptimes" | "/api/v4/stoptimes" | "/api/v5/stoptimes" => {
-            handle_api_passthrough(path, query)
-        }
-        
-        // Map/RailViz
-        "/api/v1/map/trips" | "/api/v4/map/trips" | "/api/v5/map/trips" => {
-            handle_api_passthrough(path, query)
-        }
-        "/api/v1/map/initial" => handle_api_passthrough(path, query),
-        "/api/v1/map/stops" => handle_api_passthrough(path, query),
-        "/api/v1/map/levels" => handle_api_passthrough(path, query),
-        
-        // Routing variants
-        "/api/v1/one-to-many" => handle_api_passthrough(path, query),
-        "/api/v1/one-to-all" | "/api/experimental/one-to-all" => {
-            handle_api_passthrough(path, query)
-        }
-        
-        // Rentals (bike sharing, etc.)
-        "/api/v1/rentals" | "/api/v1/map/rentals" => handle_api_passthrough(path, query),
-        
-        // Glyph requests used by MapLibre text rendering
-        _ if path.starts_with("/tiles/glyphs/") => handle_glyphs(path),
-
-        // Tiles (vector tiles for map)
-        _ if path.starts_with("/api/v1/tiles/") 
-            || path.starts_with("/api/v5/tiles/")
-            || (path.starts_with("/tiles/") && path.ends_with(".mvt")) => {
-            handle_tiles(path)
-        }
-        
-        // Debug
-        "/api/debug/transfers" => handle_debug_transfers(&params),
-        
-        // Catch all
-        _ => Err(format!("Unknown endpoint: {}", path))
+    let result = match classify_path(path) {
+        RouteKind::Geocode => handle_geocode(&params),
+        RouteKind::ReverseGeocode => handle_reverse_geocode(&params),
+        RouteKind::Passthrough => handle_api_passthrough(path, query),
+        RouteKind::Glyph => handle_glyphs(path),
+        RouteKind::Tiles => handle_tiles(path),
+        RouteKind::DebugTransfers => handle_debug_transfers(&params),
+        RouteKind::Unknown => Err(format!("Unknown endpoint: {}", path)),
     };
     
     match result {
@@ -372,7 +388,7 @@ fn handle_debug_transfers(_params: &std::collections::HashMap<String, String>)
 
 #[cfg(test)]
 mod tests {
-    use super::build_passthrough_path_and_query;
+    use super::{build_passthrough_path_and_query, classify_path, RouteKind};
 
     #[test]
     fn passthrough_path_without_query() {
@@ -398,5 +414,33 @@ mod tests {
             build_passthrough_path_and_query("/api/v5/plan", query),
             "/api/v5/plan?fromPlace=59.331139%2C18.059447&toPlace=59.313578%2C18.06192"
         );
+    }
+
+    #[test]
+    fn openapi_endpoints_are_routed_in_protocol_mode() {
+        // Keep this aligned with ui/api/openapi/services.gen.ts
+        let openapi_paths = [
+            "/api/v5/plan",
+            "/api/v1/one-to-many",
+            "/api/v1/one-to-all",
+            "/api/v1/reverse-geocode",
+            "/api/v1/geocode",
+            "/api/v5/trip",
+            "/api/v5/stoptimes",
+            "/api/v5/map/trips",
+            "/api/v1/map/initial",
+            "/api/v1/map/stops",
+            "/api/v1/map/levels",
+            "/api/v1/rentals",
+            "/api/debug/transfers",
+        ];
+
+        for path in openapi_paths {
+            assert_ne!(
+                classify_path(path),
+                RouteKind::Unknown,
+                "UI OpenAPI path not routed in protocol mode: {path}"
+            );
+        }
     }
 }
