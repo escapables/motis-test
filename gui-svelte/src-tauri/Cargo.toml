@@ -52,3 +52,6 @@ rustflags = ["-C", "target-feature=-crt-static", "-C", "link-arg=-static"]
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0.2"

@@ -43,12 +43,25 @@
 			}
 		};
 
+		const onGesture = (event: Event) => {
+			if (isInMapContainer(event.target)) {
+				return;
+			}
+			event.preventDefault();
+		};
+
 		window.addEventListener('wheel', onWheel, { passive: false, capture: true });
 		window.addEventListener('keydown', onKeyDown, { capture: true });
+		window.addEventListener('gesturestart', onGesture, { passive: false, capture: true });
+		window.addEventListener('gesturechange', onGesture, { passive: false, capture: true });
+		window.addEventListener('gestureend', onGesture, { passive: false, capture: true });
 
 		return () => {
 			window.removeEventListener('wheel', onWheel, { capture: true });
 			window.removeEventListener('keydown', onKeyDown, { capture: true });
+			window.removeEventListener('gesturestart', onGesture, { capture: true });
+			window.removeEventListener('gesturechange', onGesture, { capture: true });
+			window.removeEventListener('gestureend', onGesture, { capture: true });
 		};
 	});
 </script>

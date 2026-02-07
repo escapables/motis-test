@@ -2,9 +2,10 @@ pub mod native;
 pub mod protocol;
 
 use native::{Match as Location, RouteResult as Route};
-use std::path::PathBuf;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::Manager;
 
 // Global debug flag
 static DEBUG_MODE: AtomicBool = AtomicBool::new(false);
@@ -15,6 +16,29 @@ impl Drop for IpcShutdownGuard {
     fn drop(&mut self) {
         native::destroy();
     }
+}
+
+#[cfg(target_os = "linux")]
+fn install_linux_zoom_lock<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> Result<(), String> {
+    use webkit2gtk::WebViewExt;
+
+    window
+        .with_webview(|webview| {
+            let view = webview.inner();
+            view.set_zoom_level(1.0);
+            view.connect_zoom_level_notify(|view| {
+                // Force app/webview zoom to remain neutral; map zoom is handled by MapLibre itself.
+                if (view.zoom_level() - 1.0).abs() > 0.000_001 {
+                    view.set_zoom_level(1.0);
+                }
+            });
+        })
+        .map_err(|e| format!("Failed to configure Linux webview zoom lock: {}", e))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn install_linux_zoom_lock<R: tauri::Runtime>(_window: &tauri::WebviewWindow<R>) -> Result<(), String> {
+    Ok(())
 }
 
 fn get_exe_dir() -> Result<PathBuf, String> {
@@ -115,6 +139,14 @@ async fn is_debug_mode() -> bool {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            if let Some(main_webview) = app.get_webview_window("main") {
+                if let Err(err) = install_linux_zoom_lock(&main_webview) {
+                    eprintln!("[MOTIS-GUI] {}", err);
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             init_backend,
             init_native,

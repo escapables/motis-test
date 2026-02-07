@@ -2097,6 +2097,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "urlencoding",
+ "webkit2gtk",
 ]
 
 [[package]]
