@@ -112,6 +112,7 @@
 	let zoom = $state(15);
 	let bounds = $state<maplibregl.LngLatBoundsLike>();
 	let map = $state<maplibregl.Map>();
+	let nativePinchLastScale = $state<number | undefined>(undefined);
 	let style = $derived(
 		browser
 			? getStyle(
@@ -124,6 +125,73 @@
 				)
 			: undefined
 	);
+
+	const GDK_TOUCHPAD_GESTURE_PHASE_BEGIN = 0;
+	const GDK_TOUCHPAD_GESTURE_PHASE_UPDATE = 1;
+	const GDK_TOUCHPAD_GESTURE_PHASE_END = 2;
+	const GDK_TOUCHPAD_GESTURE_PHASE_CANCEL = 3;
+
+	type NativeTouchpadPinchDetail = {
+		x: number;
+		y: number;
+		scale: number;
+		phase: number;
+	};
+
+	const handleNativeTouchpadPinch = (event: Event) => {
+		const detail = (event as CustomEvent<NativeTouchpadPinchDetail>).detail;
+		if (!detail) {
+			return;
+		}
+		if (!Number.isFinite(detail.scale) || detail.scale <= 0) {
+			return;
+		}
+		if (detail.phase === GDK_TOUCHPAD_GESTURE_PHASE_BEGIN) {
+			nativePinchLastScale = detail.scale;
+			return;
+		}
+		if (
+			detail.phase === GDK_TOUCHPAD_GESTURE_PHASE_END ||
+			detail.phase === GDK_TOUCHPAD_GESTURE_PHASE_CANCEL
+		) {
+			nativePinchLastScale = undefined;
+			return;
+		}
+		if (detail.phase !== GDK_TOUCHPAD_GESTURE_PHASE_UPDATE || !map) {
+			return;
+		}
+		if (!Number.isFinite(detail.x) || !Number.isFinite(detail.y)) {
+			return;
+		}
+
+		const target = document.elementFromPoint(detail.x, detail.y);
+		if (!(target instanceof Element) || !target.closest('.motis-map')) {
+			return;
+		}
+
+		const previousScale = nativePinchLastScale ?? detail.scale;
+		nativePinchLastScale = detail.scale;
+		if (!Number.isFinite(previousScale) || previousScale <= 0) {
+			return;
+		}
+
+		const scaleRatio = detail.scale / previousScale;
+		if (!Number.isFinite(scaleRatio) || Math.abs(scaleRatio - 1) < 0.001) {
+			return;
+		}
+
+		const zoomDelta = Math.log2(scaleRatio);
+		if (!Number.isFinite(zoomDelta) || Math.abs(zoomDelta) < 0.001) {
+			return;
+		}
+
+		const around = map.unproject([detail.x, detail.y]);
+		const nextZoom = Math.max(
+			map.getMinZoom(),
+			Math.min(map.getMaxZoom(), map.getZoom() + zoomDelta)
+		);
+		map.zoomTo(nextZoom, { around, duration: 0 });
+	};
 
 	const formatInitError = (error: unknown): string => {
 		if (error == null) {
@@ -189,6 +257,13 @@
 
 	onMount(async () => {
 		await loadInitialState();
+	});
+
+	onMount(() => {
+		window.addEventListener('__motis_touchpad_pinch', handleNativeTouchpadPinch);
+		return () => {
+			window.removeEventListener('__motis_touchpad_pinch', handleNativeTouchpadPinch);
+		};
 	});
 
 	const applyPageStateFromURL = () => {

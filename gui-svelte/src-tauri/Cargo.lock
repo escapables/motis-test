@@ -2087,6 +2087,8 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "flate2",
+ "gdk",
+ "gtk",
  "libc",
  "once_cell",
  "reqwest 0.12.28",

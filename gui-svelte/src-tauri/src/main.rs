@@ -20,11 +20,38 @@ impl Drop for IpcShutdownGuard {
 
 #[cfg(target_os = "linux")]
 fn install_linux_zoom_lock<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> Result<(), String> {
+    use gdk::{EventMask, EventTouchpadPinch};
+    use gtk::prelude::{WidgetExt, WidgetExtManual};
     use webkit2gtk::WebViewExt;
 
     window
         .with_webview(|webview| {
             let view = webview.inner();
+
+            view.add_events(EventMask::TOUCHPAD_GESTURE_MASK);
+
+            view.connect_event(|widget, event| {
+                let Some(pinch) = event.downcast_ref::<EventTouchpadPinch>() else {
+                    return gtk::glib::Propagation::Proceed;
+                };
+
+                let (x, y) = pinch.position();
+                let scale = pinch.scale();
+                if !x.is_finite() || !y.is_finite() || !scale.is_finite() || scale <= 0.0 {
+                    return gtk::glib::Propagation::Stop;
+                }
+
+                let phase = pinch.as_ref().phase;
+                let script = format!(
+                    "window.dispatchEvent(new CustomEvent('__motis_touchpad_pinch', {{ detail: {{ x: {}, y: {}, scale: {}, phase: {} }} }}));",
+                    x, y, scale, phase
+                );
+                widget.run_javascript(&script, None::<&webkit2gtk::gio::Cancellable>, |_| {});
+
+                // Prevent WebKit global page zoom for touchpad pinch. JS map logic handles map-only zoom.
+                gtk::glib::Propagation::Stop
+            });
+
             view.set_zoom_level(1.0);
             view.connect_zoom_level_notify(|view| {
                 // Force app/webview zoom to remain neutral; map zoom is handled by MapLibre itself.
