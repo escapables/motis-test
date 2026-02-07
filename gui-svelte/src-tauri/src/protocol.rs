@@ -221,12 +221,18 @@ fn handle_rentals(_params: &std::collections::HashMap<String, String>)
     Err("Legacy rentals handler should not be used".to_string())
 }
 
-fn handle_api_passthrough(path: &str, query: &str) -> Result<(Vec<u8>, &'static str), String> {
-    let path_and_query = if query.is_empty() {
+fn build_passthrough_path_and_query(path: &str, query: &str) -> String {
+    if query.is_empty() {
         path.to_string()
     } else {
+        // Preserve the original query bytes exactly (no parse/rebuild),
+        // so STOP/place ids and encoded values keep their semantics.
         format!("{}?{}", path, query)
-    };
+    }
+}
+
+fn handle_api_passthrough(path: &str, query: &str) -> Result<(Vec<u8>, &'static str), String> {
+    let path_and_query = build_passthrough_path_and_query(path, query);
     let value = native::api_get_sync(&path_and_query).map_err(|e| e.to_string())?;
     Ok((serde_json::to_vec(&value).unwrap_or_else(|_| b"{}".to_vec()), "application/json"))
 }
@@ -328,4 +334,35 @@ fn handle_tiles(path: &str) -> Result<(Vec<u8>, &'static str), String> {
 fn handle_debug_transfers(_params: &std::collections::HashMap<String, String>)
     -> Result<(Vec<u8>, &'static str), String> {
     Ok(("[]".as_bytes().to_vec(), "application/json"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_passthrough_path_and_query;
+
+    #[test]
+    fn passthrough_path_without_query() {
+        assert_eq!(
+            build_passthrough_path_and_query("/api/v1/plan", ""),
+            "/api/v1/plan"
+        );
+    }
+
+    #[test]
+    fn passthrough_preserves_stop_id_query_for_plan() {
+        let query = "fromPlace=sweden_1617&toPlace=sweden_765&time=2026-02-07T08%3A00%3A00Z";
+        assert_eq!(
+            build_passthrough_path_and_query("/api/v1/plan", query),
+            "/api/v1/plan?fromPlace=sweden_1617&toPlace=sweden_765&time=2026-02-07T08%3A00%3A00Z"
+        );
+    }
+
+    #[test]
+    fn passthrough_preserves_coordinate_query_for_plan() {
+        let query = "fromPlace=59.331139%2C18.059447&toPlace=59.313578%2C18.06192";
+        assert_eq!(
+            build_passthrough_path_and_query("/api/v5/plan", query),
+            "/api/v5/plan?fromPlace=59.331139%2C18.059447&toPlace=59.313578%2C18.06192"
+        );
+    }
 }
