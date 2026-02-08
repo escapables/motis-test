@@ -437,13 +437,21 @@
 		? parseIntOr(urlParams.get('isochronesCircleResolution'), defaultQuery.circleResolution)
 		: defaultQuery.circleResolution;
 
+	const OSM_OBJECT_ID_REGEX = /^(node|way|relation)\/\[\d+\]$/;
+
 	const toPlaceString = (l: Location) => {
-		if (l.match?.type === 'STOP') {
-			return l.match.id;
-		} else if (l.match?.level) {
-			return `${lngLatToStr(l.match!)},${l.match.level}`;
+		if (!l.match) return '';
+
+		const id = l.match.id?.trim() ?? '';
+		const isResolvableStopId =
+			l.match.type === 'STOP' && id.length > 0 && !OSM_OBJECT_ID_REGEX.test(id);
+
+		if (isResolvableStopId) {
+			return id;
+		} else if (l.match.level != undefined) {
+			return `${lngLatToStr(l.match)},${l.match.level}`;
 		} else {
-			return `${lngLatToStr(l.match!)}`;
+			return `${lngLatToStr(l.match)}`;
 		}
 	};
 
@@ -503,7 +511,7 @@
 						ignorePostTransitRentalReturnConstraints,
 						ignoreDirectRentalReturnConstraints,
 						algorithm,
-						via: via ? via.map((v) => v.match?.id) : undefined,
+						via: via ? via.map((v) => toPlaceString(v)).filter((v) => v.length > 0) : undefined,
 						viaMinimumStay
 					} as PlanData['query'])
 				} as PlanData)
