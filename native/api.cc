@@ -529,6 +529,9 @@ std::optional<std::string> api_get(native_instance& inst,
     }
 
     if (path == "/api/v1/map/initial") {
+      if (!inst.data_.tt_) {
+        return std::nullopt;
+      }
       auto ep = motis::ep::initial{*inst.data_.tt_, inst.config_};
       return boost::json::serialize(boost::json::value_from(ep(url)));
     }
@@ -610,6 +613,10 @@ std::optional<std::string> api_get(native_instance& inst,
     }
 
     if (path == "/api/v1/one-to-all" || path == "/api/experimental/one-to-all") {
+      if (!inst.data_.w_ || !inst.data_.l_ || !inst.data_.pl_ || !inst.data_.tt_ ||
+          !inst.data_.tags_) {
+        return std::nullopt;
+      }
       auto ep = motis::ep::one_to_all{
           inst.config_,
           inst.data_.w_.get(),
