@@ -32,6 +32,9 @@ fn error_response(
 
 fn classify_error(error: &str) -> (StatusCode, &'static str) {
     let lower = error.to_ascii_lowercase();
+    if lower.starts_with("unsupported protocol endpoint:") {
+        return (StatusCode::NOT_IMPLEMENTED, "endpoint");
+    }
     if lower.starts_with("unknown endpoint:") {
         return (StatusCode::NOT_FOUND, "endpoint");
     }
@@ -61,6 +64,7 @@ enum RouteKind {
     Glyph,
     Tiles,
     DebugTransfers,
+    UnsupportedDebug,
     Unknown,
 }
 
@@ -103,6 +107,12 @@ fn classify_path(path: &str) -> RouteKind {
 
         // Debug
         "/api/debug/transfers" => RouteKind::DebugTransfers,
+        "/api/route"
+        | "/api/matches"
+        | "/api/elevators"
+        | "/api/update_elevator"
+        | "/api/graph"
+        | "/api/debug/flex" => RouteKind::UnsupportedDebug,
         _ => RouteKind::Unknown,
     }
 }
@@ -159,6 +169,10 @@ pub fn handle_motis_request(
         RouteKind::Glyph => handle_glyphs(path),
         RouteKind::Tiles => handle_tiles(path),
         RouteKind::DebugTransfers => handle_debug_transfers(&params),
+        RouteKind::UnsupportedDebug => Err(format!(
+            "Unsupported protocol endpoint: {}. This debug endpoint is only available in HTTP server mode.",
+            path
+        )),
         RouteKind::Unknown => Err(format!("Unknown endpoint: {}", path)),
     };
     

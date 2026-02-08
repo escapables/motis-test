@@ -22,7 +22,8 @@
 	import { client } from '@motis-project/motis-client';
 	import DateInput from './DateInput.svelte';
 
-	const baseUrl = client.getConfig().baseUrl;
+	const baseUrl = client.getConfig().baseUrl ?? '';
+	const supportsDebugPanel = !baseUrl.startsWith('motis://');
 
 	const post = async (path: string, req: unknown) => {
 		const response = await fetch(`${baseUrl}${path}`, {
@@ -177,15 +178,17 @@
 	let elevator = $state<Elevator | null>(null);
 </script>
 
-<Button
-	size="icon"
-	variant={debug ? 'default' : 'outline'}
-	onclick={() => {
-		debug = !debug;
-	}}
->
-	<Bug size="icon" class="h-[1.2rem] w-[1.2rem]" />
-</Button>
+{#if supportsDebugPanel}
+	<Button
+		size="icon"
+		variant={debug ? 'default' : 'outline'}
+		onclick={() => {
+			debug = !debug;
+		}}
+	>
+		<Bug size="icon" class="h-[1.2rem] w-[1.2rem]" />
+	</Button>
+{/if}
 
 <!-- eslint-disable-next-line -->
 {#snippet propertiesTable(_1: maplibregl.MapMouseEvent, _2: () => void, features: any)}
