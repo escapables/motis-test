@@ -11,7 +11,7 @@ This fork focuses on running MOTIS as a **portable, offline Linux desktop app** 
 - No localhost required for primary operation.
 - Works from USB storage (including FAT32 via `/tmp` copy launcher).
 - Uses the Svelte UI in a Tauri app (`gui-svelte/`) with a `motis://` custom protocol.
-- Keeps localhost HTTP server mode as fallback.
+- Uses IPC-only backend mode in the native Svelte app.
 
 ## Primary Goal
 
@@ -43,7 +43,9 @@ motis-ipc (C++ JSON over stdin/stdout)
 MOTIS core + GTFS/OSM data
 ```
 
-HTTP/localhost remains available only as secondary fallback.
+HTTP/localhost is available only for legacy browser/server workflows.
+
+Native Svelte runtime is IPC-only; localhost/browser workflows are legacy development paths.
 
 ## Quick Start (Portable Bundle Workflow)
 
@@ -81,9 +83,9 @@ Minimum runtime files at USB root:
 ./RUN.sh
 ```
 
-## Localhost Fallback
+## Localhost Workflows
 
-Fallback server mode is still part of the project for compatibility and troubleshooting, but it is intentionally not the primary deployment path.
+Localhost/browser workflows are treated as legacy development tooling and are not part of the native portable runtime contract.
 
 ## Repository Guide
 
@@ -97,6 +99,7 @@ Fallback server mode is still part of the project for compatibility and troubles
 
 - `docs/PORTABLE_APP.md` architecture, deployment model, implementation notes.
 - `docs/ROADMAP.md` focused backlog and milestones.
+- `docs/decisions/localhost-mode-deprecation.md` decision memo and migration checklist for issue `#19`.
 - `gui-svelte/README.md` Svelte bundle build and run details.
 - `gui/README.md` simple GUI notes.
 - Upstream dev setup docs remain under `docs/linux-dev-setup.md`, `docs/windows-dev-setup.md`, `docs/macos-dev-setup.md`.

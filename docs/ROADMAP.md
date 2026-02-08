@@ -34,6 +34,6 @@ This is the focused backlog for the portable IPC-first app.
 
 ## Guardrails
 
-- Keep localhost/server mode as fallback only.
+- Do not reintroduce localhost/server fallback into the native Svelte app.
 - Do not regress offline + firewall-restricted operation.
 - Keep docs aligned with the actual shipped USB workflow.

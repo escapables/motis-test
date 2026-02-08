@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/translation';
-	import { ArrowUpDown, LocateFixed } from '@lucide/svelte';
+	import { ArrowUpDown } from '@lucide/svelte';
 	import maplibregl from 'maplibre-gl';
 	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -14,7 +14,7 @@
 	import AddressTypeahead from '$lib/AddressTypeahead.svelte';
 	import AdvancedOptions from '$lib/AdvancedOptions.svelte';
 	import DateInput from '$lib/DateInput.svelte';
-	import { posToLocation, type Location } from '$lib/Location';
+	import type { Location } from '$lib/Location';
 	import type { PrePostDirectMode } from '$lib/Modes';
 
 	let {
@@ -80,17 +80,6 @@
 	let fromItems = $state<Array<Location>>([]);
 	let toItems = $state<Array<Location>>([]);
 
-	const getLocation = () => {
-		if (navigator && navigator.geolocation) {
-			navigator.geolocation.getCurrentPosition(applyPosition, (e) => console.log(e), {
-				enableHighAccuracy: true
-			});
-		}
-	};
-
-	const applyPosition = (position: { coords: { latitude: number; longitude: number } }) => {
-		from = posToLocation({ lat: position.coords.latitude, lon: position.coords.longitude }, 0);
-	};
 </script>
 
 <div id="searchmask-container" class="flex flex-col space-y-4 p-4 relative">
@@ -111,15 +100,7 @@
 		{transitModes}
 	/>
 	<Button
-		variant="ghost"
-		class="absolute z-10 right-4 top-0"
-		size="icon"
-		onclick={() => getLocation()}
-	>
-		<LocateFixed class="w-5 h-5" />
-	</Button>
-	<Button
-		class="absolute z-10 right-14 top-6"
+		class="absolute z-10 right-4 top-6"
 		variant="outline"
 		size="icon"
 		onclick={() => {

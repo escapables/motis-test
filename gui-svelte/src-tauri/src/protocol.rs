@@ -170,7 +170,7 @@ pub fn handle_motis_request(
         RouteKind::Tiles => handle_tiles(path),
         RouteKind::DebugTransfers => handle_debug_transfers(&params),
         RouteKind::UnsupportedDebug => Err(format!(
-            "Unsupported protocol endpoint: {}. This debug endpoint is only available in HTTP server mode.",
+            "Unsupported protocol endpoint: {}. This endpoint is not available in portable IPC mode.",
             path
         )),
         RouteKind::Unknown => Err(format!("Unknown endpoint: {}", path)),

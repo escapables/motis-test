@@ -125,7 +125,6 @@ async fn init_backend(
 async fn get_backend_mode() -> Result<String, String> {
     match native::get_mode() {
         native::BackendMode::Ipc => Ok("ipc".to_string()),
-        native::BackendMode::Server => Ok("server".to_string()),
     }
 }
 

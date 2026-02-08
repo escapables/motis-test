@@ -7,18 +7,17 @@ This document is the fork-specific technical reference for the portable offline 
 - Primary runtime path must not depend on localhost.
 - Run from USB on Linux (including FAT32 media).
 - Preserve Svelte UI behavior from the web app.
-- Keep localhost server path as fallback only.
+- Keep native runtime IPC-only.
 
-## Runtime Modes
+## Runtime Mode
 
-1. `IPC mode` (primary)
+1. `IPC mode` (native app)
 - `motis-gui-svelte` serves UI and intercepts API requests via `motis://` protocol.
 - Rust protocol handler calls synchronous IPC wrappers in `native.rs`.
 - IPC wrappers send JSON commands to `motis-ipc` via stdin/stdout.
 - `motis-ipc` calls native MOTIS C++ APIs directly.
 
-2. `HTTP server mode` (fallback)
-- Uses localhost APIs when explicitly needed for compatibility/testing.
+Legacy localhost/browser workflows remain available as separate development tooling, not as part of the native app fallback path.
 
 ## Main Components
 

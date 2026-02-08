@@ -1,10 +1,8 @@
 <script lang="ts">
 	import { t } from '$lib/i18n/translation';
 	import { Slider } from 'bits-ui';
-	import { LocateFixed } from '@lucide/svelte';
 	import maplibregl from 'maplibre-gl';
 	import * as RadioGroup from '$lib/components/ui/radio-group';
-	import Button from '$lib/components/ui/button/button.svelte';
 	import { Label } from '$lib/components/ui/label';
 	import {
 		type ElevationCosts,
@@ -16,7 +14,7 @@
 	import AddressTypeahead from '$lib/AddressTypeahead.svelte';
 	import AdvancedOptions from '$lib/AdvancedOptions.svelte';
 	import DateInput from '$lib/DateInput.svelte';
-	import { posToLocation, type Location } from '$lib/Location';
+	import type { Location } from '$lib/Location';
 	import { formatDurationSec } from '$lib/formatDuration';
 	import type { PrePostDirectMode, TransitMode } from '$lib/Modes';
 	import { generateTimes } from './generateTimes';
@@ -95,13 +93,6 @@
 
 	let lastSearchDir = arriveBy ? 'arrival' : 'departure';
 
-	const getLocation = () => {
-		if (navigator && navigator.geolocation) {
-			navigator.geolocation.getCurrentPosition(applyPosition, (e) => console.log(e), {
-				enableHighAccuracy: true
-			});
-		}
-	};
 	const swapPrePostData = (searchDir: string) => {
 		if (searchDir != lastSearchDir) {
 			const tmpModes = preTransitModes;
@@ -115,10 +106,6 @@
 			postTransitProviderGroups = tmpProviderGroups;
 			lastSearchDir = searchDir;
 		}
-	};
-
-	const applyPosition = (position: { coords: { latitude: number; longitude: number } }) => {
-		one = posToLocation({ lat: position.coords.latitude, lon: position.coords.longitude }, 0);
 	};
 </script>
 
@@ -163,14 +150,6 @@
 		bind:selected={one}
 		bind:items={oneItems}
 	/>
-	<Button
-		variant="ghost"
-		class="absolute z-10 right-4 top-0"
-		size="icon"
-		onclick={() => getLocation()}
-	>
-		<LocateFixed class="w-5 h-5" />
-	</Button>
 	<div class="flex flex-row gap-2 flex-wrap">
 		<DateInput bind:value={time} />
 		<RadioGroup.Root

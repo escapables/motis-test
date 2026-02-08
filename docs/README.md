@@ -4,6 +4,7 @@
 
 - `docs/PORTABLE_APP.md`: architecture and deployment model for the USB/offline IPC-first app.
 - `docs/ROADMAP.md`: focused backlog and completed milestones.
+- `docs/decisions/localhost-mode-deprecation.md`: issue `#19` decision memo and migration checklist.
 
 ## Setup docs (upstream/general)
 

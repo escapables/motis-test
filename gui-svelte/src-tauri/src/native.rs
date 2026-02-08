@@ -3,7 +3,6 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use reqwest;
 use std::path::Path;
 use std::time::Duration;
 #[cfg(unix)]
@@ -164,15 +163,13 @@ impl Match {
 // Backend connection modes
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BackendMode {
-    Ipc,     // Subprocess with stdin/stdout - no HTTP needed
-    Server,  // HTTP localhost server - uses web API
+    Ipc, // Subprocess with stdin/stdout - no HTTP needed
 }
 
 // Global state
 static BACKEND_MODE: Lazy<Mutex<BackendMode>> = Lazy::new(|| Mutex::new(BackendMode::Ipc));
 static IPC_PROCESS: Lazy<Mutex<Option<IpcBackend>>> = Lazy::new(|| Mutex::new(None));
 static IPC_LAUNCH_CONFIG: Lazy<Mutex<Option<IpcLaunchConfig>>> = Lazy::new(|| Mutex::new(None));
-static SERVER_URL: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new("http://localhost:8080".to_string()));
 static STARTUP_DIAGNOSTICS: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
 const IPC_RECOVERY_MAX_ATTEMPTS: usize = 2;
@@ -554,147 +551,53 @@ pub fn init_ipc(exe_path: &str, data_path: &str) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-pub fn init_server(url: &str) {
-    if let Ok(mut guard) = IPC_PROCESS.lock() {
-        if let Some(mut backend) = guard.take() {
-            backend.terminate("switch-to-server");
-        }
-    }
-    if let Ok(mut cfg) = IPC_LAUNCH_CONFIG.lock() {
-        *cfg = None;
-    }
-
-    let mut guard = SERVER_URL.lock().unwrap();
-    *guard = url.to_string();
-    
-    let mut mode_guard = BACKEND_MODE.lock().unwrap();
-    *mode_guard = BackendMode::Server;
-    clear_startup_diagnostics();
-}
-
 pub fn get_mode() -> BackendMode {
     *BACKEND_MODE.lock().unwrap()
 }
 
-// Geocode - works in both modes
+// Geocode
 pub async fn geocode(query: &str) -> Result<Vec<Match>, Box<dyn std::error::Error>> {
-    let mode = get_mode();
-    
-    match mode {
-        BackendMode::Ipc => {
-            eprintln!("[MOTIS-GUI] geocode() called with query: '{}'", query);
-            
-            let cmd = format!(r#"{{"cmd":"geocode","query":"{}"}}"#, query.replace('"', "\\\""));
-            eprintln!("[MOTIS-GUI] Sending command: {}", cmd);
-            let data = send_ipc_json_command(&cmd)?;
-            let locations: Vec<LocationResult> = serde_json::from_value(data)?;
-            eprintln!("[MOTIS-GUI] Found {} locations", locations.len());
-            let matches: Vec<Match> = locations
-                .iter()
-                .map(Match::from_location_result)
-                .collect();
-            Ok(matches)
-        }
-        BackendMode::Server => {
-            let url = SERVER_URL.lock()?.clone();
-            eprintln!("[MOTIS-GUI] geocode() using server: {}", url);
-            
-            let client = reqwest::Client::new();
-            let resp = client
-                .get(format!("{}/api/v1/geocode", url))
-                .query(&[("text", query)])
-                .send()
-                .await?;
-            
-            let matches: Vec<Match> = resp.json().await?;
-            eprintln!("[MOTIS-GUI] Found {} matches", matches.len());
-            Ok(matches)
-        }
-    }
+    eprintln!("[MOTIS-GUI] geocode() called with query: '{}'", query);
+
+    let cmd = format!(r#"{{"cmd":"geocode","query":"{}"}}"#, query.replace('"', "\\\""));
+    eprintln!("[MOTIS-GUI] Sending command: {}", cmd);
+    let data = send_ipc_json_command(&cmd)?;
+    let locations: Vec<LocationResult> = serde_json::from_value(data)?;
+    eprintln!("[MOTIS-GUI] Found {} locations", locations.len());
+    let matches: Vec<Match> = locations.iter().map(Match::from_location_result).collect();
+    Ok(matches)
 }
 
-// Plan route - works in both modes
+// Plan route
 pub async fn plan_route(
     from_lat: f64, from_lon: f64,
     to_lat: f64, to_lon: f64
 ) -> Result<Vec<RouteResult>, Box<dyn std::error::Error>> {
-    let mode = get_mode();
-    
-    match mode {
-        BackendMode::Ipc => {
-            eprintln!("[MOTIS-GUI] plan_route() called: ({}, {}) to ({}, {})", from_lat, from_lon, to_lat, to_lon);
-            
-            let cmd = format!(
-                r#"{{"cmd":"plan_route","from_lat":{},"from_lon":{},"to_lat":{},"to_lon":{}}}"#,
-                from_lat, from_lon, to_lat, to_lon
-            );
-            eprintln!("[MOTIS-GUI] Sending command: {}", cmd);
-            let data = send_ipc_json_command(&cmd)?;
-            let routes: Vec<RouteResult> = serde_json::from_value(data)?;
-            eprintln!("[MOTIS-GUI] Found {} routes", routes.len());
-            Ok(routes)
-        }
-        BackendMode::Server => {
-            let url = SERVER_URL.lock()?.clone();
-            eprintln!("[MOTIS-GUI] plan_route() using server: {}", url);
-            
-            let client = reqwest::Client::new();
-            let resp = client
-                .get(format!("{}/api/v1/plan", url))
-                .query(&[
-                    ("fromPlace", &format!("{}, {}", from_lat, from_lon)),
-                    ("toPlace", &format!("{}, {}", to_lat, to_lon)),
-                ])
-                .send()
-                .await?;
-            
-            let result: serde_json::Value = resp.json().await?;
-            // Parse from MOTIS plan response format
-            let itineraries = result["itineraries"].as_array()
-                .ok_or("No itineraries")?;
-            
-            let mut routes = Vec::new();
-            for itin in itineraries {
-                let route = RouteResult {
-                    duration_seconds: itin["duration"].as_i64().unwrap_or(0) as i32,
-                    transfers: itin["transfers"].as_i64().unwrap_or(0) as i32,
-                    legs: Vec::new(), // Simplified - would parse legs here
-                };
-                routes.push(route);
-            }
-            eprintln!("[MOTIS-GUI] Found {} routes", routes.len());
-            Ok(routes)
-        }
-    }
+    eprintln!(
+        "[MOTIS-GUI] plan_route() called: ({}, {}) to ({}, {})",
+        from_lat, from_lon, to_lat, to_lon
+    );
+
+    let cmd = format!(
+        r#"{{"cmd":"plan_route","from_lat":{},"from_lon":{},"to_lat":{},"to_lon":{}}}"#,
+        from_lat, from_lon, to_lat, to_lon
+    );
+    eprintln!("[MOTIS-GUI] Sending command: {}", cmd);
+    let data = send_ipc_json_command(&cmd)?;
+    let routes: Vec<RouteResult> = serde_json::from_value(data)?;
+    eprintln!("[MOTIS-GUI] Found {} routes", routes.len());
+    Ok(routes)
 }
 
 // Reverse geocode
 pub async fn reverse_geocode(lat: f64, lon: f64) -> Result<Option<Match>, Box<dyn std::error::Error>> {
-    let mode = get_mode();
-    
-    match mode {
-        BackendMode::Ipc => {
-            let cmd = format!(r#"{{"cmd":"reverse_geocode","lat":{},"lon":{}}}"#, lat, lon);
-            let data = send_ipc_json_command(&cmd)?;
-            if !data.is_null() {
-                let loc: LocationResult = serde_json::from_value(data)?;
-                Ok(Some(Match::from_location_result(&loc)))
-            } else {
-                Ok(None)
-            }
-        }
-        BackendMode::Server => {
-            let url = SERVER_URL.lock()?.clone();
-            let client = reqwest::Client::new();
-            let resp = client
-                .get(format!("{}/api/v1/reverse-geocode", url))
-                .query(&[("lat", lat.to_string()), ("lon", lon.to_string())])
-                .send()
-                .await?;
-            
-            let matches: Vec<Match> = resp.json().await?;
-            Ok(matches.into_iter().next())
-        }
+    let cmd = format!(r#"{{"cmd":"reverse_geocode","lat":{},"lon":{}}}"#, lat, lon);
+    let data = send_ipc_json_command(&cmd)?;
+    if !data.is_null() {
+        let loc: LocationResult = serde_json::from_value(data)?;
+        Ok(Some(Match::from_location_result(&loc)))
+    } else {
+        Ok(None)
     }
 }
 
