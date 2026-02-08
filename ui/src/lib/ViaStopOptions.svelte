@@ -30,6 +30,15 @@
 		match: Location;
 		stay: number;
 	};
+
+	const OSM_OBJECT_ID_REGEX = /^(node|way|relation)\/\[\d+\]$/;
+	const isValidViaStop = (location: Location): boolean => {
+		const m = location.match;
+		if (!m || m.type !== 'STOP') return false;
+		const id = m.id?.trim() ?? '';
+		return id.length > 0 && !OSM_OBJECT_ID_REGEX.test(id);
+	};
+
 	let vias = $state<Via[]>(
 		via?.map(
 			(_, i): Via => ({
@@ -47,13 +56,7 @@
 
 	$effect(() => {
 		const filtered = vias
-			.filter((v) => {
-				const m = v.match?.match;
-				if (!m) return false;
-				const hasId = !!m.id && m.id.trim().length > 0;
-				const hasCoordinates = Number.isFinite(m.lat) && Number.isFinite(m.lon);
-				return hasId || hasCoordinates;
-			})
+			.filter((v) => isValidViaStop(v.match))
 			.map((v) => $state.snapshot(v));
 
 		const oldVia = $state.snapshot(via);
@@ -105,6 +108,7 @@
 								name={`via-${index}`}
 								bind:selected={vias[index].match}
 								type="STOP"
+								allowCoordinateInput={false}
 							/>
 						</div>
 						<div class="w-24">

@@ -15,6 +15,7 @@
 		name,
 		place,
 		type,
+		allowCoordinateInput = true,
 		transitModes,
 		onChange = () => {}
 	}: {
@@ -24,6 +25,7 @@
 		name?: string;
 		place?: maplibregl.LngLatLike;
 		type?: undefined | LocationType;
+		allowCoordinateInput?: boolean;
 		transitModes?: Mode[];
 		onChange?: (location: Location) => void;
 	} = $props();
@@ -70,7 +72,7 @@
 		loading = true;
 		lookupError = undefined;
 
-		const coord = parseCoordinatesToLocation(inputValue);
+		const coord = allowCoordinateInput ? parseCoordinatesToLocation(inputValue) : undefined;
 		if (coord) {
 			selected = coord;
 			items = [];

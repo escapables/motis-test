@@ -455,6 +455,13 @@
 		}
 	};
 
+	const toViaStopId = (l: Location) => {
+		if (!l.match || l.match.type !== 'STOP') return '';
+		const id = l.match.id?.trim() ?? '';
+		if (id.length === 0 || OSM_OBJECT_ID_REGEX.test(id)) return '';
+		return id;
+	};
+
 	const providerGroupsForQuery = (modes: PrePostDirectMode[], groups: string[]): string[] => {
 		if (!modes.some((mode) => mode.startsWith('RENTAL_'))) {
 			return [];
@@ -466,6 +473,20 @@
 		from.match && to.match
 			? ({
 					query: omitDefaults({
+						...(() => {
+							const viaEntries =
+								via
+									?.map((v, i) => ({
+										id: toViaStopId(v),
+										stay: viaMinimumStay?.[i] ?? 0
+									}))
+									.filter((entry) => entry.id.length > 0) ?? [];
+							return {
+								via: viaEntries.length > 0 ? viaEntries.map((entry) => entry.id) : undefined,
+								viaMinimumStay:
+									viaEntries.length > 0 ? viaEntries.map((entry) => entry.stay) : undefined
+							};
+						})(),
 						time: time.toISOString(),
 						fromPlace: toPlaceString(from),
 						toPlace: toPlaceString(to),
@@ -510,9 +531,7 @@
 						ignorePreTransitRentalReturnConstraints,
 						ignorePostTransitRentalReturnConstraints,
 						ignoreDirectRentalReturnConstraints,
-						algorithm,
-						via: via ? via.map((v) => toPlaceString(v)).filter((v) => v.length > 0) : undefined,
-						viaMinimumStay
+						algorithm
 					} as PlanData['query'])
 				} as PlanData)
 			: undefined
