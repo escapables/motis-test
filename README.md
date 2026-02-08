@@ -1,6 +1,6 @@
 <p align="center"><img src="logo.svg" width="196" height="196"></p>
 
-# MOTIS Portable Offline Fork (`escapables/motis-portable`)
+# (`escapables/motis-portable`)
 
 This fork targets one primary outcome: a portable offline Linux desktop app that runs MOTIS without browser localhost access.
 
@@ -70,9 +70,9 @@ cd usb-bundle-svelte
 ./motis-import.sh /path/to/gtfs.zip /path/to/osm.pbf
 ```
 
-- `gtfs.zip` (required): Public transit feed in GTFS format.
+- `gtfs.zip`: Public transit feed in GTFS format.
   It provides agencies, routes, stops, trips, and timetables used for journey planning.
-- `*.osm.pbf` (required): OpenStreetMap extract in PBF format.
+- `*.osm.pbf`: OpenStreetMap extract in PBF format.
   It provides street/path geometry for walking connections, street routing, reverse geocoding, and map data generation. See upstream project for examples and links.
 
 Notes:
