@@ -2,110 +2,111 @@
 
 # MOTIS Portable Offline Fork (`escapables/motis-portable`)
 
-> [!WARNING]
-> Experimental fork. APIs and behavior can change quickly.
+This fork targets one primary outcome: a portable offline Linux desktop app that runs MOTIS without browser localhost access.
 
-This fork focuses on running MOTIS as a **portable, offline Linux desktop app** with an **IPC-first architecture**:
+## Supported Runtime Model
 
-- No browser required.
-- No localhost required for primary operation.
-- Works from USB storage (including FAT32 via `/tmp` copy launcher).
-- Uses the Svelte UI in a Tauri app (`gui-svelte/`) with a `motis://` custom protocol.
-- Uses IPC-only backend mode in the native Svelte app.
+- Primary app: `gui-svelte/` (Tauri + Svelte).
+- Transport: `motis://` protocol in Tauri.
+- Backend: `motis-ipc` over stdin/stdout JSON to MOTIS core.
+- Deployment target: USB-friendly bundle (`usb-bundle-svelte/`), including FAT32-safe launcher (`RUN.sh`).
 
-## Primary Goal
+## Build Prerequisites
 
-Run MOTIS from a USB stick on Linux in restricted environments where loopback/network access may be blocked, while preserving the web UI experience.
+### Required tools
 
-## Current Status
+- `git`
+- `cmake` (3.20+ recommended)
+- C/C++ toolchain with C++23 support (`gcc`/`g++` or `clang`)
+- `make` or `ninja`
+- Rust toolchain (Rust 1.77+), `cargo`
+- Tauri CLI (`cargo install tauri-cli`)
+- `node` + `pnpm`
+- `pkg-config`
 
-- Native IPC bridge (`motis-ipc`) working.
-- Svelte Tauri app (`motis-gui-svelte`) working.
-- Vector tiles rendering in MapLibre working.
-- Glyph rendering for labels working.
-- Major interactive endpoints routed through IPC protocol passthrough.
+### Required Linux system libraries (for Tauri/WebKit build)
 
-## Architecture (IPC-first)
+- GTK3 development package
+- WebKit2GTK development package
+- libsoup3 development package
+- JavaScriptCoreGTK development package
+- OpenSSL development package
 
-```text
-Svelte UI (fetch motis://...)
-        |
-        v
-Tauri protocol handler (Rust)
-        |
-        v
-native.rs sync wrappers
-        |
-        v
-motis-ipc (C++ JSON over stdin/stdout)
-        |
-        v
-MOTIS core + GTFS/OSM data
-```
+Package names vary by distro. Install the equivalent `-dev`/`-devel` packages for your distribution.
 
-HTTP/localhost is available only for legacy browser/server workflows.
+## Clean-Clone USB Build (Validated)
 
-Native Svelte runtime is IPC-only; localhost/browser workflows are legacy development paths.
-
-## Quick Start (Portable Bundle Workflow)
-
-### 1. Build core + IPC
+Validated in a clean clone on **February 8, 2026**:
 
 ```bash
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --target motis motis-native motis-ipc -j"$(nproc)"
+git clone git@github.com:escapables/motis-portable.git
+cd motis-portable
+./gui-svelte/build-usb.sh
 ```
 
-### 2. Build Svelte Tauri app
+What this script does:
+
+1. Builds the Svelte UI.
+2. Builds native targets (`motis`, `motis-ipc`) if missing.
+3. Builds the Tauri app (`motis-gui-svelte`).
+4. Assembles `usb-bundle-svelte/`.
+5. Applies runtime permissions.
+
+No manual patching or manual build steps are required when prerequisites are installed.
+First-time builds require network access to download Rust crates, pnpm packages, and CMake-managed dependencies.
+
+## Offline / Reuse Modes
 
 ```bash
-cd ../ui
-pnpm install
-pnpm build
-
-cd ../gui-svelte/src-tauri
-cargo tauri build
+./gui-svelte/build-usb.sh --offline
+./gui-svelte/build-usb.sh --skip-pnpm-install
 ```
 
-### 3. Assemble/copy to USB root
+`--offline` requires previously populated `node_modules`.
 
-Minimum runtime files at USB root:
+## Run the Bundle
 
-- `motis-gui-svelte`
-- `motis-ipc`
-- `RUN.sh`
-- `data/` (your imported MOTIS dataset)
+### 1. Import data (once per dataset)
 
-### 4. Run
+```bash
+cd usb-bundle-svelte
+./motis-import.sh /path/to/gtfs.zip /path/to/osm.pbf
+```
+
+### 2. Start app
 
 ```bash
 ./RUN.sh
 ```
 
-## Localhost Workflows
+## Bundle Contents
 
-Localhost/browser workflows are treated as legacy development tooling and are not part of the native portable runtime contract.
+`usb-bundle-svelte/` contains:
 
-## Repository Guide
+- `motis-gui-svelte`
+- `motis-ipc`
+- `motis`
+- `RUN.sh`
+- `motis-import.sh`
+- `sweden-route-fix.lua`
+- `ui/`
+- `data/` (imported by user)
 
-- `native/` C++ native API + IPC bridge.
-- `gui-svelte/` primary desktop app (Tauri + Svelte UI).
-- `gui/` simple HTML Tauri app (secondary/debug UI path).
-- `ui/` Svelte web UI source.
-- `docs/` setup guides and project-specific design/roadmap docs.
+## Repository Layout
 
-## Project Docs
+- `gui-svelte/` primary desktop app and USB build tooling
+- `native/` C++ native API and IPC bridge
+- `ui/` Svelte frontend source
+- `src/` MOTIS core logic
+- `docs/` design and implementation notes
 
-- `docs/PORTABLE_APP.md` architecture, deployment model, implementation notes.
-- `docs/ROADMAP.md` focused backlog and milestones.
-- `docs/decisions/localhost-mode-deprecation.md` decision memo and migration checklist for issue `#19`.
-- `gui-svelte/README.md` Svelte bundle build and run details.
-- `gui/README.md` simple GUI notes.
-- Upstream dev setup docs remain under `docs/linux-dev-setup.md`, `docs/windows-dev-setup.md`, `docs/macos-dev-setup.md`.
+## Current Status
+
+- Native IPC bridge working
+- Svelte Tauri app working
+- Route planning, geocoding, reverse geocoding working
+- Vector tiles and glyph rendering working
 
 ## Upstream Project
-
-Original MOTIS project:
 
 - https://github.com/motis-project/motis
