@@ -87,9 +87,9 @@ jobs:
         config:
           - preset: linux-amd64-release
             artifact: linux-amd64
-          - preset: linux-arm64-release
-            artifact: linux-arm64
+            emulator: ""
           - preset: linux-sanitizer
+            emulator: ""
           - preset: linux-debug
             emulator: valgrind --suppressions=deps/osr/docs/tbb.supp --suppressions=deps/osr/docs/pthread.supp --suppressions=tools/suppress.txt --leak-check=full --gen-suppressions=all --error-exitcode=1
     env:
@@ -112,7 +112,14 @@ jobs:
       - name: CMake
         run: |
           git config --global --add safe.directory `pwd`
-          cmake -G Ninja -S . -B build --preset=${{ matrix.config.preset }}
+          if [ "${{ matrix.config.preset }}" = "linux-debug" ]; then
+            cmake -G Ninja -S . -B build --preset=${{ matrix.config.preset }} \
+              -DCMAKE_C_FLAGS_DEBUG="--coverage -O0 -g" \
+              -DCMAKE_CXX_FLAGS_DEBUG="--coverage -O0 -g" \
+              -DCMAKE_EXE_LINKER_FLAGS="-B/opt/mold --coverage"
+          else
+            cmake -G Ninja -S . -B build --preset=${{ matrix.config.preset }}
+          fi
 
       # ==== BUILD ====
       - name: Build
@@ -123,12 +130,35 @@ jobs:
 
       # ==== TESTS ====
       - name: Run Integration Tests
-        if: matrix.config.preset != 'linux-arm64-release'
         run: ${{ matrix.config.emulator }} build/motis-portable
+
+      - name: Generate Coverage Report
+        if: matrix.config.preset == 'linux-debug'
+        run: |
+          python3 -m pip --version || python3 -m ensurepip --upgrade
+          python3 -m pip install --user gcovr
+          export PATH="$HOME/.local/bin:$PATH"
+          gcovr \
+            --root . \
+            --object-directory build \
+            --xml-pretty \
+            --output build/coverage.xml \
+            --exclude 'deps/.*' \
+            --exclude 'test/.*' \
+            --exclude 'ui/.*' \
+            --exclude 'gui-svelte/.*'
+
+      - name: Upload coverage reports to Codecov
+        if: matrix.config.preset == 'linux-debug' && secrets.CODECOV_TOKEN != ''
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: build/coverage.xml
+          name: linux-debug-coverage
 
       # ==== FULL DATASET TEST ====
       - name: Test Full Dataset
-        if: matrix.config.preset != 'linux-debug' && matrix.config.preset != 'linux-arm64-release'
+        if: matrix.config.preset != 'linux-debug'
         run: |
           ln -s deps/tiles/profile tiles-profiles
           wget -N https://github.com/motis-project/test-data/raw/aachen/aachen.osm.pbf
@@ -175,7 +205,7 @@ jobs:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./motis-${{ matrix.config.artifact }}.tar.bz2
           asset_name: motis-${{ matrix.config.artifact }}.tar.bz2
-          asset_content_type: application/x-
+          asset_content_type: application/x-bzip2
 
   docker:
     if: ${{ github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name }}
@@ -220,7 +250,7 @@ jobs:
           context: .
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
 
   publish-motis-client:
     if: github.event.action == 'published'
