@@ -46,7 +46,13 @@ fn install_linux_zoom_lock<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) 
                     "window.dispatchEvent(new CustomEvent('__motis_touchpad_pinch', {{ detail: {{ x: {}, y: {}, scale: {}, phase: {} }} }}));",
                     x, y, scale, phase
                 );
-                widget.run_javascript(&script, None::<&webkit2gtk::gio::Cancellable>, |_| {});
+                widget.evaluate_javascript(
+                    &script,
+                    None,
+                    None,
+                    None::<&webkit2gtk::gio::Cancellable>,
+                    |_| {},
+                );
 
                 // Prevent WebKit global page zoom for touchpad pinch. JS map logic handles map-only zoom.
                 gtk::glib::Propagation::Stop

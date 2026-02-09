@@ -159,6 +159,58 @@
 		return displayArea ? match.name + ', ' + displayArea : match.name;
 	};
 
+	const normalizeLocationName = (name?: string): string => {
+		if (!name) return '';
+		return name
+			.toLowerCase()
+			.normalize('NFKD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.replace(/[^a-z0-9]/g, '');
+	};
+
+	const getDefaultAreaName = (match: Match): string => {
+		const defaultArea = match.areas.find((a) => a.default)?.name;
+		return defaultArea ?? match.areas[0]?.name ?? '';
+	};
+
+	const STOP_UPGRADE_MAX_DISTANCE_METERS = 750;
+
+	const isSamePlaceAsStop = (place: Match, stop: Match): boolean => {
+		if (place.type !== 'PLACE' || stop.type !== 'STOP') return false;
+
+		const placeName = normalizeLocationName(place.name);
+		const stopName = normalizeLocationName(stop.name);
+		if (!placeName || placeName !== stopName) return false;
+
+		const placeArea = getDefaultAreaName(place);
+		const stopArea = getDefaultAreaName(stop);
+		if (placeArea && stopArea && placeArea !== stopArea) return false;
+
+		const placePos = new maplibregl.LngLat(place.lon, place.lat);
+		const stopPos = new maplibregl.LngLat(stop.lon, stop.lat);
+		return placePos.distanceTo(stopPos) <= STOP_UPGRADE_MAX_DISTANCE_METERS;
+	};
+
+	const preferEquivalentStop = (loc: Location): Location => {
+		const selectedMatch = loc.match;
+		if (!selectedMatch || selectedMatch.type !== 'PLACE') {
+			return loc;
+		}
+
+		const bestStop = items.find(
+			(candidate) => candidate.match && isSamePlaceAsStop(selectedMatch, candidate.match)
+		)?.match;
+
+		if (!bestStop) {
+			return loc;
+		}
+
+		return {
+			match: bestStop,
+			label: getLabel(bestStop)
+		};
+	};
+
 	const updateGuesses = async () => {
 		loading = true;
 		lookupError = undefined;
@@ -283,7 +335,7 @@
 	value={match}
 	onValueChange={(e: string) => {
 		if (e) {
-			selected = deserialize(e);
+			selected = preferEquivalentStop(deserialize(e));
 			inputValue = selected.label!;
 			onChange(selected);
 		}

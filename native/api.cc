@@ -528,6 +528,34 @@ std::optional<std::string> api_get(native_instance& inst,
       return boost::json::serialize(boost::json::value_from(ep(url)));
     }
 
+    if (path == "/api/v1/geocode" || path == "/api/v5/geocode") {
+      if (!inst.data_.w_ || !inst.data_.pl_ || !inst.data_.matches_ ||
+          !inst.data_.tt_ || !inst.data_.tags_ || !inst.data_.t_ ||
+          !inst.data_.f_ || !inst.data_.tc_) {
+        return std::nullopt;
+      }
+      auto ep = motis::ep::geocode{
+          inst.data_.w_.get(),      inst.data_.pl_.get(),
+          inst.data_.matches_.get(), inst.data_.tt_.get(),
+          inst.data_.tags_.get(),    *inst.data_.t_, *inst.data_.f_,
+          *inst.data_.tc_,           inst.data_.adr_ext_.get()};
+      return boost::json::serialize(boost::json::value_from(ep(url)));
+    }
+
+    if (path == "/api/v1/reverse-geocode" || path == "/api/v5/reverse-geocode") {
+      if (!inst.data_.w_ || !inst.data_.pl_ || !inst.data_.matches_ ||
+          !inst.data_.tt_ || !inst.data_.tags_ || !inst.data_.t_ ||
+          !inst.data_.f_ || !inst.data_.r_) {
+        return std::nullopt;
+      }
+      auto ep = motis::ep::reverse_geocode{
+          inst.data_.w_.get(),      inst.data_.pl_.get(),
+          inst.data_.matches_.get(), inst.data_.tt_.get(),
+          inst.data_.tags_.get(),    *inst.data_.t_, *inst.data_.f_,
+          *inst.data_.r_,            inst.data_.adr_ext_.get()};
+      return boost::json::serialize(boost::json::value_from(ep(url)));
+    }
+
     if (path == "/api/v1/map/initial") {
       if (!inst.data_.tt_) {
         return std::nullopt;

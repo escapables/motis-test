@@ -8,6 +8,9 @@ repository = ""
 edition = "2021"
 rust-version = "1.77.0"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(mobile)"] }
+
 [dependencies]
 tauri = { version = "2", features = ["custom-protocol"] }
 tauri-plugin-opener = "2"

@@ -302,24 +302,6 @@
 	let one = $state<Location>(parseLocation(urlParams?.get('one'), urlParams?.get('oneName')));
 	let stop = $state<Location>();
 
-	let viaParam = getUrlArray('via');
-	let viaLabels = $state(
-		urlParams?.has('viaLabel0')
-			? Array.from({ length: viaParam.length }).reduce<Record<string, string>>((acc, _, i) => {
-					acc[`viaLabel${i}`] = urlParams?.get(`viaLabel${i}`) ?? '';
-					return acc;
-				}, {})
-			: {}
-	);
-	let via = $state(
-		urlParams?.has('via')
-			? viaParam.map((str, i) => parseLocation(str, viaLabels[`viaLabel${i}`]))
-			: undefined
-	);
-	let viaMinimumStay = $state(
-		urlParams?.has('via') ? getUrlArray('viaMinimumStay').map((s) => parseIntOr(s, 0)) : undefined
-	);
-
 	let time = $state<Date>(new Date(urlParams?.get('time') || Date.now()));
 	let timetableView = $state(urlParams?.get('timetableView') != 'false');
 	let searchWindow = $state(
@@ -455,13 +437,6 @@
 		}
 	};
 
-	const toViaStopId = (l: Location) => {
-		if (!l.match || l.match.type !== 'STOP') return '';
-		const id = l.match.id?.trim() ?? '';
-		if (id.length === 0 || OSM_OBJECT_ID_REGEX.test(id)) return '';
-		return id;
-	};
-
 	const providerGroupsForQuery = (modes: PrePostDirectMode[], groups: string[]): string[] => {
 		if (!modes.some((mode) => mode.startsWith('RENTAL_'))) {
 			return [];
@@ -473,20 +448,6 @@
 		from.match && to.match
 			? ({
 					query: omitDefaults({
-						...(() => {
-							const viaEntries =
-								via
-									?.map((v, i) => ({
-										id: toViaStopId(v),
-										stay: viaMinimumStay?.[i] ?? 0
-									}))
-									.filter((entry) => entry.id.length > 0) ?? [];
-							return {
-								via: viaEntries.length > 0 ? viaEntries.map((entry) => entry.id) : undefined,
-								viaMinimumStay:
-									viaEntries.length > 0 ? viaEntries.map((entry) => entry.stay) : undefined
-							};
-						})(),
 						time: time.toISOString(),
 						fromPlace: toPlaceString(from),
 						toPlace: toPlaceString(to),
@@ -573,16 +534,23 @@
 			lastPlanQuery = baseQuery;
 			clearTimeout(searchDebounceTimer);
 			searchDebounceTimer = setTimeout(() => {
-				const base = plan(baseQuery).then(preprocessItinerary(from, to));
 				const q = baseQuery.query;
+				if (hasDebug) {
+					console.info('[MOTIS] plan query', {
+						fromPlace: q.fromPlace,
+						toPlace: q.toPlace,
+						fromName: from.label,
+						toName: to.label
+					});
+				}
+				const base = plan(baseQuery).then(preprocessItinerary(from, to));
 				baseResponse = base;
 				routingResponses = [base];
 				pushStateWithQueryString(
 					{
 						...q,
 						...(q.fromPlace == from.label ? {} : { fromName: from.label }),
-						...(q.toPlace == to.label ? {} : { toName: to.label }),
-						...viaLabels
+						...(q.toPlace == to.label ? {} : { toName: to.label })
 					},
 					{ activeTab: 'connections' },
 					true
@@ -827,9 +795,6 @@
 						bind:preTransitProviderGroups
 						bind:postTransitProviderGroups
 						bind:directProviderGroups
-						bind:via
-						bind:viaMinimumStay
-						bind:viaLabels
 					/>
 				</Card>
 			</Tabs.Content>

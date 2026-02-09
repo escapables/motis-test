@@ -58,8 +58,6 @@ fn classify_error(error: &str) -> (StatusCode, &'static str) {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RouteKind {
-    Geocode,
-    ReverseGeocode,
     Passthrough,
     Glyph,
     Tiles,
@@ -70,12 +68,12 @@ enum RouteKind {
 
 fn classify_path(path: &str) -> RouteKind {
     match path {
-        // Geocoding
-        "/api/v1/geocode" | "/api/v5/geocode" => RouteKind::Geocode,
-        "/api/v1/reverse-geocode" | "/api/v5/reverse-geocode" => RouteKind::ReverseGeocode,
-
         // Route planning + core transit API
-        "/api/v1/plan"
+        "/api/v1/geocode"
+        | "/api/v5/geocode"
+        | "/api/v1/reverse-geocode"
+        | "/api/v5/reverse-geocode"
+        | "/api/v1/plan"
         | "/api/v5/plan"
         | "/api/v1/trip"
         | "/api/v5/trip"
@@ -163,8 +161,6 @@ pub fn handle_motis_request(
     
     // Route to appropriate handler
     let result = match classify_path(path) {
-        RouteKind::Geocode => handle_geocode(&params),
-        RouteKind::ReverseGeocode => handle_reverse_geocode(&params),
         RouteKind::Passthrough => handle_api_passthrough(path, query),
         RouteKind::Glyph => handle_glyphs(path),
         RouteKind::Tiles => handle_tiles(path),
@@ -190,53 +186,6 @@ pub fn handle_motis_request(
             let (status, stage) = classify_error(&e);
             error_response(status, stage, path, &e)
         }
-    }
-}
-
-fn handle_geocode(params: &std::collections::HashMap<String, String>) 
-    -> Result<(Vec<u8>, &'static str), String> {
-    
-    // Support multiple common parameter names
-    let query = params.get("text")
-        .or_else(|| params.get("q"))
-        .or_else(|| params.get("query"))
-        .or_else(|| params.get("search"))
-        .ok_or("Missing query parameter (expected 'text', 'q', 'query', or 'search')")?;
-    
-    eprintln!("[MOTIS-PROTOCOL] Geocoding query: '{}'", query);
-    
-    match native::geocode_sync(query) {
-        Ok(locations) => {
-            eprintln!("[MOTIS-PROTOCOL] Geocode found {} results", locations.len());
-            // Return array directly (not wrapped in content)
-            Ok((serde_json::to_vec(&locations).unwrap(), "application/json"))
-        }
-        Err(e) => {
-            eprintln!("[MOTIS-PROTOCOL] Geocode error: {}", e);
-            Err(e.to_string())
-        }
-    }
-}
-
-fn handle_reverse_geocode(params: &std::collections::HashMap<String, String>)
-    -> Result<(Vec<u8>, &'static str), String> {
-    
-    let lat: f64 = params.get("lat")
-        .and_then(|s| s.parse().ok())
-        .ok_or("Missing or invalid 'lat' parameter")?;
-    
-    let lon: f64 = params.get("lon")
-        .and_then(|s| s.parse().ok())
-        .ok_or("Missing or invalid 'lon' parameter")?;
-    
-    match native::reverse_geocode_sync(lat, lon) {
-        Ok(Some(loc)) => {
-            Ok((serde_json::to_vec(&loc).unwrap(), "application/json"))
-        }
-        Ok(None) => {
-            Ok(("null".as_bytes().to_vec(), "application/json"))
-        }
-        Err(e) => Err(e.to_string())
     }
 }
 
@@ -382,6 +331,16 @@ mod tests {
         assert_eq!(
             build_passthrough_path_and_query("/api/v5/plan", query),
             "/api/v5/plan?fromPlace=59.331139%2C18.059447&toPlace=59.313578%2C18.06192"
+        );
+    }
+
+    #[test]
+    fn passthrough_preserves_geocode_filters() {
+        let query =
+            "text=Liding%C3%B6%20Centrum&type=STOP&mode=TRAM%2CBUS&place=59.366%2C18.134&placeBias=2";
+        assert_eq!(
+            build_passthrough_path_and_query("/api/v1/geocode", query),
+            "/api/v1/geocode?text=Liding%C3%B6%20Centrum&type=STOP&mode=TRAM%2CBUS&place=59.366%2C18.134&placeBias=2"
         );
     }
 

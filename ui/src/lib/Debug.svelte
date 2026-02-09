@@ -17,7 +17,7 @@
 	import * as Card from '$lib/components/ui/card';
 	import Marker from '$lib/map/Marker.svelte';
 	import { posToLocation, type Location as ApiLocation } from '$lib/Location';
-	import geojson from 'geojson';
+	import type { GeoJSON as GeoJsonData } from 'geojson';
 	import Popup from '$lib/map/Popup.svelte';
 	import { client } from '@motis-project/motis-client';
 	import DateInput from './DateInput.svelte';
@@ -141,14 +141,14 @@
 		};
 	};
 
-	let graph = $state<null | geojson.GeoJSON>(null);
-	let elevators = $state<null | geojson.GeoJSON>(null);
+	let graph = $state<null | GeoJsonData>(null);
+	let elevators = $state<null | GeoJsonData>(null);
 	$effect(() => {
 		if (debug && bounds && zoom > 15) {
-			getGraph(maplibregl.LngLatBounds.convert(bounds), level).then((response: geojson.GeoJSON) => {
+			getGraph(maplibregl.LngLatBounds.convert(bounds), level).then((response: GeoJsonData) => {
 				graph = response;
 			});
-			getElevators(maplibregl.LngLatBounds.convert(bounds)).then((response: geojson.GeoJSON) => {
+			getElevators(maplibregl.LngLatBounds.convert(bounds)).then((response: GeoJsonData) => {
 				elevators = response;
 			});
 		} else {

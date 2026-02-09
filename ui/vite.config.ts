@@ -10,6 +10,9 @@ export default defineConfig({
 	},
 	build: {
 		sourcemap: true,
+		// The map/itinerary app payload is intentionally large in portable offline mode.
+		// Keep warning visibility for real regressions while avoiding noise at current baseline.
+		chunkSizeWarningLimit: 1500,
 		rollupOptions: {
 			output: {
 				manualChunks: (id) => {
