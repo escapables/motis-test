@@ -46,7 +46,7 @@ What this does:
 1. Builds the Svelte UI.
 2. Builds native targets (`motis`, `motis-ipc`) if missing.
 3. Builds `motis-gui-svelte` with Tauri.
-4. Assembles `usb-bundle-svelte/`.
+4. Assembles `usb-bundle/`.
 
 No manual patching or manual intervention is required when prerequisites are installed.
 First-time builds require network access for Rust crates, pnpm packages, and CMake-managed dependency downloads.

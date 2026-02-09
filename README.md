@@ -9,7 +9,7 @@ This fork targets one primary outcome: a portable offline Linux desktop app that
 - Primary app: `gui-svelte/` (Tauri + Svelte).
 - Transport: `motis://` protocol in Tauri.
 - Backend: `motis-ipc` over stdin/stdout JSON to MOTIS core.
-- Deployment target: USB-friendly bundle (`usb-bundle-svelte/`), including FAT32-safe launcher (`RUN.sh`).
+- Deployment target: USB-friendly bundle (`usb-bundle/`), including FAT32-safe launcher (`RUN.sh`).
 
 ## Build Prerequisites
 
@@ -47,7 +47,7 @@ What this script does:
 1. Builds the Svelte UI.
 2. Builds native targets (`motis`, `motis-ipc`) if missing.
 3. Builds the Tauri app (`motis-gui-svelte`).
-4. Assembles `usb-bundle-svelte/`.
+4. Assembles `usb-bundle/`.
 5. Applies runtime permissions.
 
 First-time builds require network access to download Rust crates, pnpm packages, and CMake-managed dependencies.
@@ -66,7 +66,7 @@ The `--offline` parameter is used for installation in an offline environment and
 ### 1. Import data (once per dataset)
 
 ```bash
-cd usb-bundle-svelte
+cd usb-bundle
 ./motis-import.sh /path/to/gtfs.zip /path/to/osm.pbf
 ```
 
@@ -88,7 +88,7 @@ Notes:
 
 ## Bundle Contents
 
-`usb-bundle-svelte/` contains:
+`usb-bundle/` contains:
 
 - `motis-gui-svelte`
 - `motis-ipc`

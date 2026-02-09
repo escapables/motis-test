@@ -13,27 +13,21 @@
 /test/test_case_osr
 /fasta.json
 /adr.cista*
-/data
+/data/
 /test/data
 dist/
-fasta.json
 config.yaml
 config.yml
 config.ini
 
 *.tar.gz
-usb-bundle/motis-transit
 *.a
 
 # --- Local development artifacts (portable GUI work) ---
 .pnpm-store/
 gui-svelte/node_modules/
 gui-svelte/src-tauri/target/
-usb-bundle-svelte/
-usb-bundle/data/
-usb-bundle/motis-gui
-usb-bundle/motis-ipc
-usb-bundle/ui/
+usb-bundle/
 error.txt
 config2.yml
 AGENTS.md

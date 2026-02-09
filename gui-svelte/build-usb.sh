@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../" && pwd)"
-USB_BUNDLE="$PROJECT_ROOT/usb-bundle-svelte"
+USB_BUNDLE="$PROJECT_ROOT/usb-bundle"
 USB_TEMPLATE="$SCRIPT_DIR/usb-template"
 BUILD_DIR="$PROJECT_ROOT/build"
 OFFLINE_MODE=0
