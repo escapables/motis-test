@@ -149,7 +149,7 @@ jobs:
             --exclude 'gui-svelte/.*'
 
       - name: Upload coverage reports to Codecov
-        if: matrix.config.preset == 'linux-debug' && secrets.CODECOV_TOKEN != ''
+        if: matrix.config.preset == 'linux-debug' && github.event_name != 'pull_request'
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
