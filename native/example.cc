@@ -7,7 +7,7 @@
 #include "native/api.h"
 
 // Simple JSON helpers (no external library needed)
-std::string json_escape(const std::string& s) {
+std::string json_escape(std::string const& s) {
     std::string result;
     for (char c : s) {
         switch (c) {
@@ -78,17 +78,17 @@ std::string location_to_json(const motis::native::location& loc) {
     return oss.str();
 }
 
-void send_response(const std::string& data_json) {
+void send_response(std::string const& data_json) {
     std::cout << "{\"status\":\"ok\",\"data\":" << data_json << "}" << std::endl;
 }
 
-void send_error(const std::string& msg) {
+void send_error(std::string const& msg) {
     std::cout << "{\"status\":\"error\",\"message\":\"" << json_escape(msg) << "\"}" << std::endl;
 }
 
 using namespace motis::native;
 
-void run_ipc_mode(const std::string& data_path) {
+void run_ipc_mode(std::string const& data_path) {
     auto* inst = init(data_path);
     if (!inst) {
         send_error("Failed to initialize MOTIS");
@@ -120,7 +120,7 @@ void run_ipc_mode(const std::string& data_path) {
         }
         else if (line.find("\"cmd\":\"plan_route\"") != std::string::npos) {
             // Extract coordinates with simple parsing
-            auto get_double = [&](const std::string& key) -> double {
+            auto get_double = [&](std::string const& key) -> double {
                 size_t pos = line.find("\"" + key + "\":");
                 if (pos == std::string::npos) return 0;
                 pos += key.length() + 3;
@@ -141,7 +141,7 @@ void run_ipc_mode(const std::string& data_path) {
             send_response(oss.str());
         }
         else if (line.find("\"cmd\":\"reverse_geocode\"") != std::string::npos) {
-            auto get_double = [&](const std::string& key) -> double {
+            auto get_double = [&](std::string const& key) -> double {
                 size_t pos = line.find("\"" + key + "\":");
                 if (pos == std::string::npos) return 0;
                 pos += key.length() + 3;
@@ -169,7 +169,7 @@ void print_route(const route& r) {
   std::cout << "Route: " << r.duration_seconds / 60 << " min, "
             << r.transfers << " transfers\n";
   
-  for (const auto& leg : r.legs) {
+  for (auto const& leg : r.legs) {
     std::cout << "  [" << leg.mode << "] "
               << leg.from_name << " → " << leg.to_name;
     
@@ -181,7 +181,7 @@ void print_route(const route& r) {
   std::cout << "\n";
 }
 
-void run_demo_mode(const std::string& data_path) {
+void run_demo_mode(std::string const& data_path) {
   std::cout << "Initializing MOTIS native API...\n";
   auto* inst = init(data_path);
   if (!inst) {
@@ -194,7 +194,7 @@ void run_demo_mode(const std::string& data_path) {
   // Example 1: Geocoding
   std::cout << "=== Geocoding: 'Stockholm Central' ===\n";
   auto locations = geocode(*inst, "Stockholm Central");
-  for (const auto& loc : locations) {
+  for (auto const& loc : locations) {
     std::cout << "  " << loc.name << " ("
               << std::fixed << std::setprecision(4)
               << loc.pos.lat << ", " << loc.pos.lon << ")\n";

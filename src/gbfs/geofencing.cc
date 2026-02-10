@@ -1,4 +1,4 @@
-#include "motis/gbfs/data.h"
+#include "motis/gbfs/geofencing.h"
 
 #include "utl/helpers/algorithm.h"
 

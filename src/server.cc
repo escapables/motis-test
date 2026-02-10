@@ -1,3 +1,5 @@
+#include "motis/server.h"
+
 #include <string_view>
 
 #include "boost/asio/io_context.hpp"

@@ -1,4 +1,4 @@
-#include "motis/odm/odm.h"
+#include "motis/odm/shorten.h"
 
 #include "nigiri/for_each_meta.h"
 #include "nigiri/logging.h"
@@ -7,6 +7,7 @@
 #include "nigiri/timetable.h"
 
 #include "motis-api/motis-api.h"
+#include "motis/odm/odm.h"
 #include "motis/odm/prima.h"
 #include "motis/transport_mode_ids.h"
 

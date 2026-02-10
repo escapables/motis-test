@@ -1,9 +1,8 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
-#include <memory>
 
 namespace motis::native {
 
@@ -61,7 +60,7 @@ struct location {
   double score;                     // Relevance score
   std::optional<std::string> category;  // POI category (for PLACE type)
   std::optional<std::vector<std::string>> modes;  // Transport modes (for STOP type)
-  std::optional<double> importance; // Stop importance
+  std::optional<double> importance;  // Stop importance
   std::optional<std::string> street;
   std::optional<std::string> house_number;
   std::optional<std::string> country;
@@ -69,23 +68,25 @@ struct location {
 };
 
 // Opaque handle to MOTIS instance
-class native_instance;
+struct native_instance;
 
 // Initialize MOTIS native API
 // Note: returns raw pointer to avoid unique_ptr with incomplete type issues
-native_instance* init(const std::string& data_path);
+native_instance* init(std::string const& data_path);
 
 // Cleanup
 void destroy(native_instance* inst);
 
 // Route planning
 std::vector<route> plan_route(native_instance& inst,
-                               coord from,
-                               coord to,
-                               std::optional<std::string> departure_time = std::nullopt);
+                              coord from,
+                              coord to,
+                              std::optional<std::string> departure_time =
+                                  std::nullopt);
 
 // Geocoding
-std::vector<location> geocode(native_instance& inst, const std::string& query);
+std::vector<location> geocode(native_instance& inst,
+                              std::string const& query);
 
 // Reverse geocoding
 std::optional<location> reverse_geocode(native_instance& inst, coord pos);

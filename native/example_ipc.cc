@@ -35,7 +35,7 @@ json leg_to_json(const leg& l) {
 
 json route_to_json(const route& r) {
     json legs = json::array();
-    for (const auto& l : r.legs) {
+    for (auto const& l : r.legs) {
         legs.push_back(leg_to_json(l));
     }
     return json{
@@ -77,14 +77,14 @@ json location_to_json(const location& loc) {
     
     // Areas
     json areas = json::array();
-    for (const auto& a : loc.areas) {
+    for (auto const& a : loc.areas) {
         areas.push_back(area_to_json(a));
     }
     j["areas"] = areas;
     
     // Tokens
     json tokens = json::array();
-    for (const auto& t : loc.tokens) {
+    for (auto const& t : loc.tokens) {
         tokens.push_back(token_to_json(t));
     }
     j["tokens"] = tokens;
@@ -121,7 +121,7 @@ void send_response(const json& data) {
     std::cout << resp.dump() << std::endl;
 }
 
-void send_error(const std::string& msg) {
+void send_error(std::string const& msg) {
     json resp = {{"status", "error"}, {"message", msg}};
     std::cout << resp.dump() << std::endl;
 }
@@ -153,7 +153,7 @@ int main(int argc, char* argv[]) {
                 auto locations = geocode(*inst, query);
                 
                 json result = json::array();
-                for (const auto& loc : locations) {
+                for (auto const& loc : locations) {
                     result.push_back(location_to_json(loc));
                 }
                 send_response(result);
@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
                 auto routes = plan_route(*inst, from, to);
                 
                 json result = json::array();
-                for (const auto& r : routes) {
+                for (auto const& r : routes) {
                     result.push_back(route_to_json(r));
                 }
                 send_response(result);

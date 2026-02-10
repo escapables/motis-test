@@ -1,5 +1,7 @@
 #pragma once
 
+#include "motis/odm/prima.h"
+
 namespace motis::odm {
 
 void shorten(std::vector<nigiri::routing::journey>& odm_journeys,

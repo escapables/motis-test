@@ -1,8 +1,8 @@
+#include "motis/gbfs/parser.h"
+
 #include <optional>
 #include <string_view>
 #include <vector>
-
-#include "motis/gbfs/parser.h"
 
 #include "cista/hash.h"
 

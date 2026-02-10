@@ -1,8 +1,8 @@
 #include "native/api.h"
 
-#include <sstream>
-#include <iomanip>
 #include <cctype>
+#include <iomanip>
+#include <sstream>
 
 #include "boost/json.hpp"
 #include "boost/url/url_view.hpp"
@@ -30,63 +30,72 @@
 #include "pbf_sdf_fonts_res.h"
 
 // Base64 encoding for tile data
-static const std::string base64_chars = 
+constexpr auto kBase64Chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static std::string base64_encode(const std::string& input) {
+static std::string base64_encode(std::string const& input) {
   std::string encoded;
   int i = 0;
   unsigned char char_array_3[3];
   unsigned char char_array_4[4];
-  
+
   for (size_t in_len = input.size(), pos = 0; in_len--; ) {
     char_array_3[i++] = input[pos++];
     if (i == 3) {
       char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
-      char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
-      char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+      char_array_4[1] =
+          ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+      char_array_4[2] =
+          ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
       char_array_4[3] = char_array_3[2] & 0x3f;
-      
-      for(int j = 0; j < 4; j++)
-        encoded += base64_chars[char_array_4[j]];
+
+      for (auto j = 0; j < 4; ++j) {
+        encoded += kBase64Chars[char_array_4[j]];
+      }
       i = 0;
     }
   }
-  
+
   if (i) {
-    for(int j = i; j < 3; j++)
+    for (auto j = i; j < 3; ++j) {
       char_array_3[j] = '\0';
-    
+    }
+
     char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
-    char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
-    char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+    char_array_4[1] =
+        ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+    char_array_4[2] =
+        ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
     char_array_4[3] = char_array_3[2] & 0x3f;
-    
-    for (int j = 0; j < (i + 1); j++)
-      encoded += base64_chars[char_array_4[j]];
-    
-    while((i++ < 3))
+
+    for (auto j = 0; j < (i + 1); ++j) {
+      encoded += kBase64Chars[char_array_4[j]];
+    }
+
+    while (i < 3) {
+      ++i;
       encoded += '=';
+    }
   }
-  
+
   return encoded;
 }
 
 namespace motis::native {
 
-class native_instance {
-public:
-  explicit native_instance(const std::string& data_path);
-  
+struct native_instance {
+  explicit native_instance(std::string const& data_path);
+
   motis::data data_;
   motis::config config_;
 };
 
-native_instance::native_instance(const std::string& data_path)
-    : data_(data_path, config::read(std::filesystem::path{data_path} / "config.yml")),
+native_instance::native_instance(std::string const& data_path)
+    : data_(data_path,
+            config::read(std::filesystem::path{data_path} / "config.yml")),
       config_(data_.config_) {}
 
-native_instance* init(const std::string& data_path) {
+native_instance* init(std::string const& data_path) {
   return new native_instance(data_path);
 }
 
@@ -95,26 +104,30 @@ void destroy(native_instance* inst) {
 }
 
 // Helper to URL-encode a string
-static std::string url_encode(const std::string& value) {
+static std::string url_encode(std::string const& value) {
   std::ostringstream escaped;
   escaped.fill('0');
   escaped << std::hex;
-  
+
   for (char c : value) {
-    if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.' || c == '~') {
+    if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' ||
+        c == '.' || c == '~') {
       escaped << c;
     } else {
       escaped << std::uppercase;
-      escaped << '%' << std::setw(2) << static_cast<int>(static_cast<unsigned char>(c));
+      escaped << '%' << std::setw(2)
+              << static_cast<int>(static_cast<unsigned char>(c));
       escaped << std::nouppercase;
     }
   }
-  
+
   return escaped.str();
 }
 
 // Helper to build URL query string
-static std::string build_route_url(coord from, coord to, const std::optional<std::string>& time) {
+static std::string build_route_url(coord from,
+                                   coord to,
+                                   std::optional<std::string> const& time) {
   std::ostringstream url;
   url << "/api/v1/plan?fromPlace=" << from.lat << "," << from.lon
       << "&toPlace=" << to.lat << "," << to.lon;
@@ -141,47 +154,46 @@ static std::string mode_to_string(api::ModeEnum mode) {
 }
 
 std::vector<route> plan_route(native_instance& inst,
-                               coord from,
-                               coord to,
-                               std::optional<std::string> departure_time) {
+                              coord from,
+                              coord to,
+                              std::optional<std::string> departure_time) {
   std::vector<route> results;
-  
+
   auto url_str = build_route_url(from, to, departure_time);
   auto url = boost::urls::url_view(url_str);
-  
+
   // Match the exact order expected by routing constructor
   auto router = motis::ep::routing{
-    inst.config_,
-    inst.data_.w_.get(),
-    inst.data_.l_.get(),
-    inst.data_.pl_.get(),
-    inst.data_.elevations_.get(),
-    inst.data_.tt_.get(),
-    inst.data_.tbd_.get(),
-    inst.data_.tags_.get(),
-    inst.data_.location_rtree_.get(),
-    inst.data_.flex_areas_.get(),
-    inst.data_.matches_.get(),
-    inst.data_.way_matches_.get(),
-    inst.data_.rt_,
-    inst.data_.shapes_.get(),
-    inst.data_.gbfs_,
-    inst.data_.adr_ext_.get(),
-    inst.data_.tz_.get(),
-    inst.data_.odm_bounds_.get(),
-    inst.data_.ride_sharing_bounds_.get(),
-    inst.data_.metrics_.get()
-  };
-  
+      inst.config_,
+      inst.data_.w_.get(),
+      inst.data_.l_.get(),
+      inst.data_.pl_.get(),
+      inst.data_.elevations_.get(),
+      inst.data_.tt_.get(),
+      inst.data_.tbd_.get(),
+      inst.data_.tags_.get(),
+      inst.data_.location_rtree_.get(),
+      inst.data_.flex_areas_.get(),
+      inst.data_.matches_.get(),
+      inst.data_.way_matches_.get(),
+      inst.data_.rt_,
+      inst.data_.shapes_.get(),
+      inst.data_.gbfs_,
+      inst.data_.adr_ext_.get(),
+      inst.data_.tz_.get(),
+      inst.data_.odm_bounds_.get(),
+      inst.data_.ride_sharing_bounds_.get(),
+      inst.data_.metrics_.get()};
+
   try {
     auto response = router(url);
-    
-    for (const auto& itin : response.itineraries_) {
+
+    for (auto const& itin : response.itineraries_) {
       route r;
       r.duration_seconds = static_cast<int>(itin.duration_);
       r.transfers = static_cast<int>(itin.transfers_);
-      
-      for (const auto& leg_obj : itin.legs_) {
+
+      for (auto const& leg_obj : itin.legs_) {
         leg l;
         l.mode = mode_to_string(leg_obj.mode_);
         l.from.lat = leg_obj.from_.lat_;
@@ -191,7 +203,8 @@ std::vector<route> plan_route(native_instance& inst,
         l.from_name = leg_obj.from_.name_;
         l.to_name = leg_obj.to_.name_;
         l.duration_seconds = static_cast<int>(leg_obj.duration_);
-        l.distance_meters = leg_obj.distance_ ? static_cast<int>(*leg_obj.distance_) : 0;
+        l.distance_meters =
+            leg_obj.distance_ ? static_cast<int>(*leg_obj.distance_) : 0;
         if (leg_obj.routeShortName_) {
           l.route_short_name = *leg_obj.routeShortName_;
         }
@@ -202,45 +215,38 @@ std::vector<route> plan_route(native_instance& inst,
       }
       results.push_back(std::move(r));
     }
-  } catch (const std::exception& e) {
+  } catch (std::exception const& e) {
     std::cerr << "Route planning error: " << e.what() << "\n";
   }
-  
+
   return results;
 }
 
-std::vector<location> geocode(native_instance& inst, const std::string& query) {
+std::vector<location> geocode(native_instance& inst, std::string const& query) {
   std::vector<location> results;
-  
+
   if (!inst.data_.t_ || !inst.data_.f_ || !inst.data_.tc_) {
     return results;
   }
-  
+
   std::string url_str = "/api/v1/geocode?text=" + url_encode(query);
   auto url = boost::urls::url_view(url_str);
-  
+
   auto geocoder = motis::ep::geocode{
-    inst.data_.w_.get(),
-    inst.data_.pl_.get(),
-    inst.data_.matches_.get(),
-    inst.data_.tt_.get(),
-    inst.data_.tags_.get(),
-    *inst.data_.t_,
-    *inst.data_.f_,
-    *inst.data_.tc_,
-    inst.data_.adr_ext_.get()
-  };
-  
+      inst.data_.w_.get(),       inst.data_.pl_.get(), inst.data_.matches_.get(),
+      inst.data_.tt_.get(),      inst.data_.tags_.get(), *inst.data_.t_,
+      *inst.data_.f_,            *inst.data_.tc_, inst.data_.adr_ext_.get()};
+
   try {
     auto response = geocoder(url);
-    for (const auto& place : response) {
+    for (auto const& place : response) {
       location loc;
       loc.name = place.name_;
       loc.place_id = place.id_;
       loc.pos.lat = place.lat_;
       loc.pos.lon = place.lon_;
       loc.score = place.score_;
-      
+
       // Type (not optional in Match)
       switch (place.type_) {
         case api::LocationTypeEnum::STOP:
@@ -253,14 +259,14 @@ std::vector<location> geocode(native_instance& inst, const std::string& query) {
           loc.type = "ADDRESS";
           break;
       }
-      
+
       // Category
       if (place.category_) {
         loc.category = *place.category_;
       }
-      
+
       // Areas
-      for (const auto& a : place.areas_) {
+      for (auto const& a : place.areas_) {
         area ar;
         ar.name = a.name_;
         ar.admin_level = static_cast<int>(a.adminLevel_);
@@ -269,28 +275,29 @@ std::vector<location> geocode(native_instance& inst, const std::string& query) {
         ar.is_default = a.default_.value_or(false);
         loc.areas.push_back(std::move(ar));
       }
-      
+
       // Tokens
-      for (const auto& t : place.tokens_) {
+      for (auto const& t : place.tokens_) {
         if (t.size() >= 2) {
-          loc.tokens.push_back(token{static_cast<int>(t[0]), static_cast<int>(t[1])});
+          loc.tokens.push_back(
+              token{static_cast<int>(t[0]), static_cast<int>(t[1])});
         }
       }
-      
+
       // Modes
       if (place.modes_) {
         std::vector<std::string> mode_strs;
-        for (const auto& m : *place.modes_) {
+        for (auto const& m : *place.modes_) {
           mode_strs.push_back(mode_to_string(m));
         }
         loc.modes = std::move(mode_strs);
       }
-      
+
       // Importance
       if (place.importance_) {
         loc.importance = *place.importance_;
       }
-      
+
       // Address fields
       if (place.street_) {
         loc.street = *place.street_;
@@ -304,25 +311,25 @@ std::vector<location> geocode(native_instance& inst, const std::string& query) {
       if (place.zip_) {
         loc.zip = *place.zip_;
       }
-      
+
       results.push_back(std::move(loc));
     }
-  } catch (const std::exception& e) {
+  } catch (std::exception const& e) {
     std::cerr << "Geocode error: " << e.what() << "\n";
   }
-  
+
   return results;
 }
 
 // Helper to convert API Match to location struct
-static location match_to_location(const api::Match& match) {
+static location match_to_location(api::Match const& match) {
   location loc;
   loc.name = match.name_;
   loc.place_id = match.id_;
   loc.pos.lat = match.lat_;
   loc.pos.lon = match.lon_;
   loc.score = match.score_;
-  
+
   // Type (LocationTypeEnum is not optional in Match, it's always present)
   switch (match.type_) {
     case api::LocationTypeEnum::STOP:
@@ -335,14 +342,14 @@ static location match_to_location(const api::Match& match) {
       loc.type = "ADDRESS";
       break;
   }
-  
+
   // Category
   if (match.category_) {
     loc.category = *match.category_;
   }
-  
+
   // Areas
-  for (const auto& a : match.areas_) {
+  for (auto const& a : match.areas_) {
     area ar;
     ar.name = a.name_;
     ar.admin_level = static_cast<int>(a.adminLevel_);
@@ -351,28 +358,29 @@ static location match_to_location(const api::Match& match) {
     ar.is_default = a.default_.value_or(false);
     loc.areas.push_back(std::move(ar));
   }
-  
+
   // Tokens
-  for (const auto& t : match.tokens_) {
+  for (auto const& t : match.tokens_) {
     if (t.size() >= 2) {
-      loc.tokens.push_back(token{static_cast<int>(t[0]), static_cast<int>(t[1])});
+      loc.tokens.push_back(
+          token{static_cast<int>(t[0]), static_cast<int>(t[1])});
     }
   }
-  
+
   // Modes
   if (match.modes_) {
     std::vector<std::string> mode_strs;
-    for (const auto& m : *match.modes_) {
+    for (auto const& m : *match.modes_) {
       mode_strs.push_back(mode_to_string(m));
     }
     loc.modes = std::move(mode_strs);
   }
-  
+
   // Importance
   if (match.importance_) {
     loc.importance = *match.importance_;
   }
-  
+
   // Address fields
   if (match.street_) {
     loc.street = *match.street_;
@@ -386,7 +394,7 @@ static location match_to_location(const api::Match& match) {
   if (match.zip_) {
     loc.zip = *match.zip_;
   }
-  
+
   return loc;
 }
 
@@ -394,30 +402,29 @@ std::optional<location> reverse_geocode(native_instance& inst, coord pos) {
   if (!inst.data_.r_ || !inst.data_.t_ || !inst.data_.f_) {
     return std::nullopt;
   }
-  
+
   std::ostringstream url_str;
   url_str << "/api/v1/reverse-geocode?place=" << pos.lat << "," << pos.lon;
   auto url = boost::urls::url_view(url_str.str());
-  
+
   auto reverse = motis::ep::reverse_geocode{
-    inst.data_.w_.get(),
-    inst.data_.pl_.get(),
-    inst.data_.matches_.get(),
-    inst.data_.tt_.get(),
-    inst.data_.tags_.get(),
-    *inst.data_.t_,
-    *inst.data_.f_,
-    *inst.data_.r_,
-    inst.data_.adr_ext_.get()
-  };
-  
+      inst.data_.w_.get(),
+      inst.data_.pl_.get(),
+      inst.data_.matches_.get(),
+      inst.data_.tt_.get(),
+      inst.data_.tags_.get(),
+      *inst.data_.t_,
+      *inst.data_.f_,
+      *inst.data_.r_,
+      inst.data_.adr_ext_.get()};
+
   try {
     auto response = reverse(url);
     if (response.empty()) {
       return std::nullopt;
     }
     return match_to_location(response[0]);
-  } catch (const std::exception& e) {
+  } catch (std::exception const& e) {
     std::cerr << "Reverse geocode error: " << e.what() << "\n";
     return std::nullopt;
   }
@@ -426,16 +433,17 @@ std::optional<location> reverse_geocode(native_instance& inst, coord pos) {
 tile_result get_tile(native_instance& inst, int z, int x, int y) {
   tile_result result;
   result.found = false;
-  
+
   if (!inst.data_.tiles_) {
     std::cerr << "Tiles data not available\n";
     return result;
   }
-  
+
   try {
     // Create tile coordinates
-    geo::tile tile_coord{static_cast<uint32_t>(x), static_cast<uint32_t>(y), static_cast<unsigned>(z)};
-    
+    geo::tile tile_coord{static_cast<uint32_t>(x), static_cast<uint32_t>(y),
+                         static_cast<unsigned>(z)};
+
     // Use tiles library directly
     auto pc = ::tiles::null_perf_counter{};
     auto rendered_tile = ::tiles::get_tile(
@@ -444,16 +452,16 @@ tile_result get_tile(native_instance& inst, int z, int x, int y) {
         inst.data_.tiles_->render_ctx_,
         tile_coord,
         pc);
-    
+
     if (rendered_tile) {
       result.data_base64 = base64_encode(*rendered_tile);
       result.found = true;
     }
-    
-  } catch (const std::exception& e) {
+
+  } catch (std::exception const& e) {
     std::cerr << "Tile fetch error: " << e.what() << "\n";
   }
-  
+
   return result;
 }
 
