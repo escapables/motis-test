@@ -298,7 +298,7 @@
 		}
 	});
 
-	let timer: number;
+	let timer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
 		if (!inputValue) {
 			items = [];
@@ -308,7 +308,9 @@
 		}
 
 		if (inputValue) {
-			clearTimeout(timer);
+			if (timer !== undefined) {
+				clearTimeout(timer);
+			}
 			timer = setTimeout(() => {
 				updateGuesses();
 			}, 150);

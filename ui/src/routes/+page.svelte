@@ -525,14 +525,16 @@
 			: undefined
 	);
 
-	let searchDebounceTimer: number;
+	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let baseResponse = $state<Promise<PlanResponse>>();
 	let routingResponses = $state<Array<Promise<PlanResponse>>>([]);
 	let stopNameFromResponse = $state<string>('');
 	$effect(() => {
 		if (baseQuery && baseQuery != lastPlanQuery && activeTab == 'connections') {
 			lastPlanQuery = baseQuery;
-			clearTimeout(searchDebounceTimer);
+			if (searchDebounceTimer !== undefined) {
+				clearTimeout(searchDebounceTimer);
+			}
 			searchDebounceTimer = setTimeout(() => {
 				const q = baseQuery.query;
 				if (hasDebug) {
@@ -558,7 +560,7 @@
 			}, 400);
 		}
 	});
-	let isochronesQueryTimeout: number;
+	let isochronesQueryTimeout: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
 		if (isochronesQuery && activeTab == 'isochrones') {
 			const [isochronesColor, isochronesOpacity, isochronesDisplayLevel] = [
@@ -568,7 +570,9 @@
 			];
 			if (lastOneToAllQuery != isochronesQuery) {
 				lastOneToAllQuery = isochronesQuery;
-				clearTimeout(isochronesQueryTimeout);
+				if (isochronesQueryTimeout !== undefined) {
+					clearTimeout(isochronesQueryTimeout);
+				}
 				isochronesOptions.status = 'WORKING';
 				isochronesOptions.errorMessage = undefined;
 				isochronesQueryTimeout = setTimeout(async () => {
