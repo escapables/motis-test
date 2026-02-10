@@ -22,8 +22,7 @@ For more details about these formats and a list of additional raster drivers als
 
 The SRTMGL1 data is provided by the LP DAAC at https://lpdaac.usgs.gov/products/srtmgl1v003/
 
-Notice that the website will be moving by June 17, 2025.
-The data should then be available at the new website: https://www.earthdata.nasa.gov/centers/lp-daac
+The LP DAAC portal moved in June 2025. If the old page is unavailable, use the Earthdata site: https://www.earthdata.nasa.gov/centers/lp-daac
 
 ### Data download
 
@@ -33,7 +32,7 @@ Downloading tiles requires a free account.
 1. Log in and create an account if necessary
 1. Enter https://search.earthdata.nasa.gov/search?q=C2763266360-LPCLOUD and select the _NASA Shuttle Radar Topography Mission Global 1 arc second V003_ data set
 1. Select all tiles you want to download
-    - Use can use the _Search by spatial polygon_ or _Search by spatial rectangle_ options in the bottom right to select smaller regions
+    - You can use the _Search by spatial polygon_ or _Search by spatial rectangle_ options in the bottom right to select smaller regions
 1. Press _Download All_, once the tiles have been selected and continue by confirming with _Download Data_
 1. Files can now be downloaded directly (_Download Files_) or using the _Download Script_.  
     Notice: Depending on the number of tiles to download, the server might take several minutes, before all links are created. Wait until the process is completed, as there will be missing tiles otherwise.

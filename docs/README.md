@@ -6,8 +6,9 @@
 - `docs/ROADMAP.md`: focused backlog and completed milestones.
 - `docs/decisions/localhost-mode-deprecation.md`: issue `#19` decision memo and migration checklist.
 
-## Setup docs (upstream/general)
+## General/reference docs
 
-- `docs/linux-dev-setup.md`
-- `docs/dev-setup-server.md`
-- `docs/setup.md`
+- `docs/linux-dev-setup.md`: Linux toolchain and build setup.
+- `docs/elevation-setup.md`: elevation tile data setup.
+- `docs/scripting.md`: Lua-based GTFS post-processing script reference.
+- `docs/STYLE.md`: MOTIS C++ style guide.
