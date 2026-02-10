@@ -10,6 +10,7 @@ Requirements:
 - CMake 3.17 (or newer): [cmake.org](https://cmake.org/download/) ([Ubuntu APT Repository](https://apt.kitware.com/))
 - Ninja: [ninja-build.org](https://ninja-build.org/)
 - Git
+- Optional compiler cache: `buildcache` on `PATH` (or configure with `-DMOTIS_BUILDCACHE_BOOTSTRAP=ON` to auto-download per build dir)
 
 > [!CAUTION]
 > Unix Makefiles are not working. Please use Ninja to build.
