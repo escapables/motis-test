@@ -86,6 +86,19 @@
 		}
 		fromHandle = false;
 	};
+
+	const toggleExpanded = () => {
+		showMap = true;
+		ref!.style.transform = `translateY(${(expanded ? window.innerHeight : 0) * maxTranslate}px)`;
+		expanded = !expanded;
+	};
+
+	const onHandleKeyDown = (e: KeyboardEvent) => {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			toggleExpanded();
+		}
+	};
 </script>
 
 <div
@@ -101,11 +114,11 @@
 >
 	<div
 		class="mx-auto my-5 relative before:content-[''] before:absolute before:inset-[-20px] before:inset-x-[-50vw] flex items-center justify-center"
-		ontouchstart={(e) => {
-			fromHandle = true;
-			showMap = true;
-			ontouchstart(e);
-		}}
+		role="button"
+		tabindex="0"
+		aria-label="Toggle drawer"
+		onclick={toggleExpanded}
+		onkeydown={onHandleKeyDown}
 	>
 		<div
 			class="absolute transition-all duration-200"

@@ -10,8 +10,8 @@
 	import { getDelayColor, rgbToHex } from './Color';
 	import type { MetaData } from './types';
 	import Control from './map/Control.svelte';
-	import { SvelteMap } from 'svelte/reactivity';
 	import { client } from '@motis-project/motis-client';
+	import type { PickingInfo } from '@deck.gl/core';
 	let {
 		map,
 		bounds,
@@ -58,41 +58,31 @@
 	//INTERACTION
 	const popup = new maplibregl.Popup({
 		closeButton: false,
-		closeOnClick: false,
+		closeOnClick: true,
 		maxWidth: 'none'
 	});
-	type HoverEvent = {
-		index?: number;
-		coordinate?: number[];
-	};
+	let activeHoverIndex = $state(-1);
+	let clickRequested = -1;
 
-	type ClickEvent = {
-		index: number;
-	};
-
-	let hoverCoordinate: maplibregl.LngLatLike | null = $state(null);
-	let activeHoverIndex: number | null = $state(null);
-
-	const onHover = ({ index, coordinate }: HoverEvent) => {
-		if (index == null || index === -1 || !coordinate) {
-			activeHoverIndex = null; // Clear index
-			hoverCoordinate = null;
+	const onHover = (info: PickingInfo) => {
+		activeHoverIndex = info.index;
+		if (info.picked && info.index !== -1 && metadata) {
+			createPopup(metadata, info.coordinate as maplibregl.LngLatLike);
+		} else {
+			metadata = undefined;
 			popup.remove();
 			if (map) map.getCanvas().style.cursor = '';
-			return;
-		}
-		if (index !== activeHoverIndex) {
-			metadata = undefined;
-		}
-		hoverCoordinate = coordinate as maplibregl.LngLatLike;
-		activeHoverIndex = index;
-		if (metaDataMap.has(index)) {
-			metadata = metaDataMap.get(index);
 		}
 	};
-	const onClick = ({ index }: ClickEvent) => {
-		if (index !== -1 && metadata) {
-			onClickTrip(metadata.id);
+	const onClick = (info: PickingInfo) => {
+		if (info.picked && info.index !== -1) {
+			if (info.index != activeHoverIndex || !metadata) {
+				metadata = undefined;
+				activeHoverIndex = info.index;
+				clickRequested = info.index;
+			} else if (metadata) {
+				onClickTrip(metadata.id);
+			}
 		}
 	};
 	const formatPopupTime = (time: string, tz: string | undefined) =>
@@ -149,8 +139,8 @@
 		return container;
 	};
 
-	const updatePopup = (trip: MetaData) => {
-		if (!trip || !map || !hoverCoordinate) return;
+	const createPopup = (trip: MetaData, hoverCoordinate: maplibregl.LngLatLike) => {
+		if (!trip || !map) return;
 
 		map.getCanvas().style.cursor = 'pointer';
 		popup.setLngLat(hoverCoordinate).setDOMContent(createPopupContent(trip)).addTo(map);
@@ -192,7 +182,9 @@
 			colorFormat: 'RGB',
 			visible: colorMode !== 'none',
 			useDevicePixels: false,
-			parameters: { depthTest: false }
+			parameters: { depthTest: false },
+			onClick,
+			onHover
 		});
 	};
 	let animationId: number;
@@ -203,8 +195,7 @@
 				type: 'update',
 				colorMode,
 				positions: DATA.positions,
-				index:
-					activeHoverIndex !== null && !metaDataMap.has(activeHoverIndex) ? activeHoverIndex : -1,
+				index: activeHoverIndex,
 				angles: DATA.angles,
 				colors: DATA.colors,
 				length: DATA.length
@@ -221,11 +212,6 @@
 			worker.postMessage({ type: 'fetch', query });
 		});
 	});
-	$effect(() => {
-		if (activeHoverIndex && hoverCoordinate && metadata) {
-			updatePopup(metadata);
-		}
-	});
 	setInterval(() => {
 		if (query && colorMode !== 'none') {
 			startTime = new Date();
@@ -237,31 +223,26 @@
 	let overlay: MapboxOverlay;
 	let worker: Worker;
 	let metadata: MetaData | undefined = $state();
-	const metaDataMap = new SvelteMap<number, MetaData>();
 
 	onMount(() => {
 		worker = new Worker(new URL('tripsWorker.ts', import.meta.url), { type: 'module' });
 		worker.postMessage({ type: 'init', baseUrl: client.getConfig().baseUrl });
 		worker.onmessage = (e) => {
 			if (e.data.type == 'fetch-complete') {
-				metaDataMap.clear();
 				status = e.data.status;
+				activeHoverIndex = -1;
+				metadata = undefined;
 				isProcessing = false;
 			} else {
-				const { positions, angles, length, colors, metadata: incomingMetaData } = e.data;
+				const { positions, angles, length, colors } = e.data;
 				DATA.positions = new Float64Array(positions.buffer);
 				DATA.angles = new Float32Array(angles.buffer);
 				DATA.colors = new Uint8Array(colors.buffer);
 				DATA.length = length;
-				if (activeHoverIndex !== null) {
-					if (e.data.metadata) {
-						metaDataMap.set(activeHoverIndex, incomingMetaData);
-						metadata = e.data.metadata;
-					} else {
-						metadata = metaDataMap.get(activeHoverIndex);
-					}
-				} else {
-					metadata = undefined;
+				metadata = e.data.metadata;
+				if (clickRequested != -1 && e.data.metadataIndex == clickRequested && metadata) {
+					onClickTrip(metadata.id);
+					clickRequested = -1;
 				}
 			}
 			overlay.setProps({ layers: [createLayer()] });
@@ -271,11 +252,7 @@
 				animationId = requestAnimationFrame(animate);
 			}
 		};
-		overlay = new MapboxOverlay({
-			interleaved: true,
-			onHover,
-			onClick
-		});
+		overlay = new MapboxOverlay({ interleaved: true });
 	});
 	$effect(() => {
 		if (!map || !overlay) return;
