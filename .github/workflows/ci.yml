@@ -74,39 +74,8 @@ jobs:
           git status --porcelain
           git status --porcelain | xargs -I {} -0 test -z \"{}\"
 
-  linux-runner-check:
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-    steps:
-      - name: Verify self-hosted linux runner availability
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const runners = await github.paginate(
-              github.rest.actions.listSelfHostedRunnersForRepo,
-              { owner, repo, per_page: 100 }
-            );
-
-            const eligible = runners.filter((runner) => {
-              if (runner.status !== "online") return false;
-              const labels = new Set((runner.labels || []).map((label) => label.name));
-              return labels.has("self-hosted") && labels.has("linux") && labels.has("x64");
-            });
-
-            if (eligible.length === 0) {
-              core.setFailed(
-                "No online self-hosted runner matches labels: self-hosted, linux, x64."
-              );
-              return;
-            }
-
-            core.info(`Found ${eligible.length} eligible self-hosted runner(s).`);
-
   linux:
-    needs: linux-runner-check
-    runs-on: [ self-hosted, linux, x64 ]
+    runs-on: ubuntu-latest
     container:
       image: ghcr.io/motis-project/docker-cpp-build
       volumes:
