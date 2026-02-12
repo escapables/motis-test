@@ -131,7 +131,10 @@ jobs:
       # ==== TESTS ====
       - name: Run Integration Tests
         run: ${{ matrix.config.emulator }} build/motis-portable
-      
+     
+      - name: install venv
+        run: apt install python3.12-venv
+
       - name: Generate Coverage Report
         if: matrix.config.preset == 'linux-debug'
         run: |
