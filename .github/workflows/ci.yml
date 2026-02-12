@@ -132,15 +132,13 @@ jobs:
       - name: Run Integration Tests
         run: ${{ matrix.config.emulator }} build/motis-portable
       
-      - name: Ensure pip is installed
-        run: apt-get update && apt-get install -y python3-pip
-        
       - name: Generate Coverage Report
         if: matrix.config.preset == 'linux-debug'
         run: |
-          python3 -m pip --version || python3 -m ensurepip --upgrade
-          python3 -m pip install --user gcovr
-          export PATH="$HOME/.local/bin:$PATH"
+          python3 -m venv /tmp/venv
+          source /tmp/venv/bin/activate
+          pip install gcovr
+          export PATH="/tmp/venv/bin:$PATH"
           gcovr \
             --root . \
             --object-directory build \
