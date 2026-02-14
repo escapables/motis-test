@@ -1,3 +1,10 @@
+---
+summary: 'C++ style guide used by this project.'
+read_when:
+  - Writing or reviewing C++ code.
+  - Running style cleanup work.
+---
+
 # MOTIS C++ Style
 
 # Preamble

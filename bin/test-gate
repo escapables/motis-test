@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT_DIR}"
+
+echo "[gate] validate-docs"
+./bin/validate-docs
+
+echo "[gate] ui lint"
+pnpm --dir ui run lint
+
+echo "[gate] ui typecheck"
+pnpm --dir ui run check
+
+echo "[gate] ui unit tests"
+pnpm --dir ui run test:unit --run

@@ -1,3 +1,10 @@
+---
+summary: 'Prioritized roadmap and status tracking for the portable IPC-first app.'
+read_when:
+  - Planning upcoming work.
+  - Reviewing completed vs remaining priorities.
+---
+
 # Portable App Roadmap
 
 This is the focused roadmap for the portable IPC-first app.

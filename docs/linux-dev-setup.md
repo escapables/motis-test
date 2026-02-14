@@ -1,3 +1,12 @@
+---
+summary: 'Linux development toolchain and build setup requirements.'
+read_when:
+  - Preparing local Linux build environment.
+  - Reproducing CI toolchain locally.
+---
+
+# Linux Development Setup
+
 > [!NOTE]  
 > Due to developer capacity constraints we cannot support newer or older compilers.
 > We also cannot support other versions of dependencies.

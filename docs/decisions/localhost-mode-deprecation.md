@@ -1,3 +1,10 @@
+---
+summary: 'Decision record for removing localhost fallback from native runtime.'
+read_when:
+  - Evaluating runtime architecture decisions.
+  - Revisiting localhost-mode deprecation context.
+---
+
 # Decision: Deprecate Localhost Mode for Native App
 
 Date: 2026-02-08  

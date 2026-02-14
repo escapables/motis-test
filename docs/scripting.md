@@ -1,3 +1,10 @@
+---
+summary: 'Reference for Lua-based GTFS post-processing scripts.'
+read_when:
+  - Adding or editing timetable script hooks.
+  - Debugging Lua dataset post-processing behavior.
+---
+
 # User Scripts
 
 MOTIS can post-process GTFS static timetable data using [Lua](https://www.lua.org/) scripts. The main purpose is to fix data in case the MOTIS user is not the owner of the data nd the data owner cannot or does not want to fix the data. In some cases, the scripts can be used to homogenize data across different datasets. Currently, post-processing is available for the following entities:

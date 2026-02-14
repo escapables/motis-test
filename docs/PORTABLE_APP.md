@@ -1,3 +1,11 @@
+---
+summary: 'Source of truth for Linux portable app runtime contract, architecture, and launcher behavior.'
+read_when:
+  - Changing native runtime behavior.
+  - Updating protocol/IPC paths.
+  - Modifying USB bundle launch behavior.
+---
+
 # Portable App Reference
 
 This document is the repository-owned source of truth for the portable desktop runtime.

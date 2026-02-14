@@ -43,6 +43,20 @@ This quantifies the code-level migration from upstream server-first workflows to
 
 Package names vary by distro. Install the equivalent `-dev`/`-devel` packages for your distribution.
 
+## Dev Gate
+
+Run the local gate before handoff:
+
+```bash
+./bin/test-gate
+```
+
+Docs-only validation:
+
+```bash
+./bin/validate-docs
+```
+
 ## USB Build
 
 ```bash

@@ -1,3 +1,10 @@
+---
+summary: 'How to download and configure elevation tiles for MOTIS imports.'
+read_when:
+  - Setting up elevation profiles.
+  - Troubleshooting elevation tile import.
+---
+
 # Setting up elevation tiles
 
 This page explains how to set up elevation tiles, that are required for elevation profiles.
