@@ -52,3 +52,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reset release-preflight checklist to concrete rerun steps (fresh clean-tree build, copied-path USB simulation, full gate/CI confirmation) before tag/release.
 - Re-ran release-preflight technical checks on fresh artifacts: clean `build-release-check` compile, native wrapper regression filter (`2/2`), copied-path USB launcher self-test, and copied-path desktop manual route-query smoke.
 - Reconfirmed pre-tag gate and CI status: fixed `docs/TODO.md` validation schema drift, reran `./bin/test-gate` (`26/26` unit tests), reran Playwright smoke (`1/1`) and regression (`2/2`), and verified latest `master` `CI` run remains green.
+- Fixed GitHub Actions workflow push-trigger evaluation by guarding pull-request-only Docker job conditions with an explicit event check.
